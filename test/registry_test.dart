@@ -8,6 +8,7 @@ class TestModule extends RegistryModule {
 
 	@override
 	Future configure(Map<String, dynamic> parameters) => super.configure(parameters).then((_) {
+		bindClass(LogService, Scope.ISOLATE);
 		bindClass(MyService, Scope.ISOLATE, MyServiceImpl);
 		bindClass(InjectService, SCOPE, InjectServiceImpl);
 		bindProvider(String, Scope.ISOLATE, new StringProvider("ECCOLO"));
@@ -21,6 +22,24 @@ Future test() {
 	MyService service = Registry.lookupObject(MyService);
 
 	return service.echo("Eccomi").then((msg) => print("Echo: $msg"));
+}
+
+abstract class Loggable {
+
+	@Inject
+	Provider<LogService> _LOG_SERVICE_PROVIDER;
+
+	LogService get LOG_SERVICE => _LOG_SERVICE_PROVIDER.get();
+
+	void info(String msg) {
+		LOG_SERVICE.info(msg);
+	}
+}
+
+class LogService {
+	void info(String msg) {
+    		print(msg);
+    	}
 }
 
 class InjectServiceImpl implements InjectService {
@@ -119,7 +138,11 @@ abstract class MyService {
 	Future<String> echo(String msg);
 }
 
-class MyServiceImpl extends BaseService implements MyService {
+class MyServiceImpl extends BaseService with Loggable implements MyService {
+	Future<String> echo(String msg) {
+		info("-> Start");
+		return super.echo(msg).whenComplete(() => info("<- End"));
+	}
 }
 
 abstract class BaseService {
