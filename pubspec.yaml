@@ -1,0 +1,7 @@
+name: dartregistry
+version: 1.1.0-SNAPSHOT
+author: Roberto Tassi <roberto.tassi@fromlabs.org>
+description: A sample command-line application
+homepage: https://github.com/fromlabs/dartregistry
+environment:
+  sdk: '>=1.0.0 <2.0.0'
