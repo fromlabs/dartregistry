@@ -45,13 +45,13 @@ class LogService {
 class InjectServiceImpl implements InjectService {
 
 	@OnScopeOpened
-	init() {
+	init(Scope scope) {
 		print("*** init ***");
 		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** init ok ***"));
 	}
 
 	@OnScopeClosing
-	deinit() {
+	deinit(Scope scope) {
 		print("*** deinit ***");
 		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** deinit ok ***"));
 	}
@@ -71,23 +71,23 @@ class DateProvider extends Provider<Future<DateTime>> {
 	Future<DateTime> get() => new Future.value(new DateTime.now());
 
 	@OnBind
-	void postBind1() {
+	void postBind1(Scope scope) {
 		print("DateProvider postBind");
 	}
 
 	@OnUnbinding
-	void preUnbind1() {
+	void preUnbind1(Scope scope) {
 		print("DateProvider preUnbind");
 	}
 
 	@OnProvidedBind
-	void postProvidedBind(Future future) {
+	void postProvidedBind(Future future, Scope scope) {
 		print("DateProvider postProvidedBind");
 		future.then((date) => print("DateProvider postProvidedBind finish: $date"));
 	}
 
 	@OnProvidedUnbinding
-	void preProvidedUnbind(Future future) {
+	void preProvidedUnbind(Future future, Scope scope) {
 		print("DateProvider preProvidedUnbind");
 		future.then((date) => print("DateProvider preProvidedUnbind finish: $date"));
 	}
@@ -102,34 +102,34 @@ class StringProvider extends Provider<String> {
 	String get() => msg;
 
 	@OnScopeOpened
-	init() {
+	init(Scope scope) {
 		print("*** init 2 ***");
 		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** init 2 ok ***"));
 	}
 
 	@OnScopeClosing
-	deinit() {
+	deinit(Scope scope) {
 		print("*** deinit 2 ***");
 		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** deinit 2 ok ***"));
 	}
 
 	@OnBind
-	void postBind() {
+	void postBind(Scope scope) {
 		print("StringProvider postBind");
 	}
 
 	@OnUnbinding
-	void preUnbind() {
+	void preUnbind(Scope scope) {
 		print("StringProvider preUnbind");
 	}
 
 	@OnProvidedBind
-	void postProvidedBind(instance) {
+	void postProvidedBind(instance, Scope scope) {
 		print("StringProvider postProvidedBind: $instance");
 	}
 
 	@OnProvidedUnbinding
-	void preProvidedUnbind(instance) {
+	void preProvidedUnbind(instance, Scope scope) {
 		print("StringProvider preProvidedUnbind: $instance");
 	}
 }
@@ -159,10 +159,10 @@ abstract class BaseService {
 	InjectService get injectService => injectServiceProvider.get();
 
 	@OnBind
-	void postBind() => print("postBind");
+	void postBind(Scope scope) => print("postBind");
 
 	@OnUnbinding
-	void preUnbind() => print("preUnbind");
+	void preUnbind(Scope scope) => print("preUnbind");
 
 	Future<String> echo(String msg) {
 		return dateProvider.get().then((date) => stringProvider.get() + ":" + injectService.echo(msg) + "@" + date.toString());
