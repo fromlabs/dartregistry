@@ -38,8 +38,8 @@ abstract class Loggable {
 
 class LogService {
 	void info(String msg) {
-    		print(msg);
-    	}
+		print(msg);
+	}
 }
 
 class InjectServiceImpl implements InjectService {
@@ -102,16 +102,16 @@ class StringProvider extends Provider<String> {
 	String get() => msg;
 
 	@OnScopeOpened
-    	init() {
-    		print("*** init 2 ***");
-    		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** init 2 ok ***"));
-    	}
+	init() {
+		print("*** init 2 ***");
+		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** init 2 ok ***"));
+	}
 
-    	@OnScopeClosing
-    	deinit() {
-    		print("*** deinit 2 ***");
-    		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** deinit 2 ok ***"));
-    	}
+	@OnScopeClosing
+	deinit() {
+		print("*** deinit 2 ***");
+		return new Future.delayed(new Duration(seconds: 1)).then((_) => print("*** deinit 2 ok ***"));
+	}
 
 	@OnBind
 	void postBind() {
@@ -141,7 +141,7 @@ abstract class MyService {
 class MyServiceImpl extends BaseService with Loggable implements MyService {
 	Future<String> echo(String msg) {
 		info("-> Start");
-		return super.echo(msg).whenComplete(() => info("<- End"));
+		return super.echo(msg).then((response) => info(response)).whenComplete(() => info("<- End"));
 	}
 }
 
