@@ -416,9 +416,9 @@ class Registry {
 		return listeners;
 	}
 
-	static void _notifyListeners(InstanceMirror instanceMirror, List<Symbol> listeners, Scope scope) => listeners.forEach((listener) => instanceMirror.invoke(listener, [scope]));
+	static void _notifyListeners(InstanceMirror instanceMirror, List<Symbol> listeners, Scope scope) => listeners.forEach((listener) => instanceMirror.invoke(listener, []));
 
-	static void _notifyProvidedListeners(InstanceMirror providerMirror, instance, List<Symbol> listeners, Scope scope) => listeners.forEach((listener) => providerMirror.invoke(listener, [instance, scope]));
+	static void _notifyProvidedListeners(InstanceMirror providerMirror, instance, List<Symbol> listeners, Scope scope) => listeners.forEach((listener) => providerMirror.invoke(listener, [instance]));
 
 	static Future _notifyScopeListeners(Map<Type, _BindingListeners> listeners, Scope scope, bool reversed) {
 		Iterable keys = reversed ? new List.from(listeners.keys, growable: false).reversed : listeners.keys;
@@ -426,9 +426,9 @@ class Registry {
 			_BindingListeners bindingListeners = listeners[clazz];
 			var providerMirror = bindingListeners.providerListeners.isNotEmpty ? reflect(bindingListeners.provider) : null;
 			var instance = bindingListeners.instanceListeners.isNotEmpty ? lookupObject(clazz) : null;
-			return Future.forEach(bindingListeners.providerListeners, (listener) => providerMirror.invoke(listener, [scope]).reflectee).then((_) => instance).then((value) {
+			return Future.forEach(bindingListeners.providerListeners, (listener) => providerMirror.invoke(listener, []).reflectee).then((_) => instance).then((value) {
 				var valueMirror = reflect(instance);
-				return Future.forEach(bindingListeners.instanceListeners, (listener) => valueMirror.invoke(listener, [scope]).reflectee);
+				return Future.forEach(bindingListeners.instanceListeners, (listener) => valueMirror.invoke(listener, []).reflectee);
 			});
 		});
 	}
