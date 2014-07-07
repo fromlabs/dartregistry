@@ -154,17 +154,14 @@ class Registry {
 		}
 
 		Map<Provider, dynamic> providers = scopeContext.bindings;
-		providers.forEach((provider, instance) {
-
-			_notifyPreUnbindListeners(instance, scope);
-
-			_notifyPreProvidedUnbindListeners(provider, instance, scope);
-
-			_notifyPreUnbindListeners(provider, scope);
-		});
-
-		return _notifyPreClosingListeners(scopeContext._scope).then((_) {
-
+		return Future.forEach(providers.keys, (provider) {
+			var instance = providers[provider];
+			return _notifyPreUnbindListeners(instance, scope)
+					.then((_) => _notifyPreProvidedUnbindListeners(provider, instance, scope))
+					.then((_) => _notifyPreUnbindListeners(provider, scope));
+		})
+		.then((_) => _notifyPreClosingListeners(scopeContext._scope))
+		.then((_) {
 			if (holder != null && holder.isHolding) {
 				holder.unhold();
 			} else {
@@ -341,25 +338,26 @@ class Registry {
 		}
 	}
 
-	static Future _notifyPostOpenedListeners(Scope scope) => _notifyScopeListeners(_getScopeListeners(scope, OnScopeOpened), scope, false);
+	static Future _notifyPostOpenedListeners(Scope scope) => _notifyScopeListeners(_getScopeListeners(scope,
+			OnScopeOpened), scope, false);
 
-	static Future _notifyPreClosingListeners(Scope scope) => _notifyScopeListeners(_getScopeListeners(scope, OnScopeClosing), scope, true);
+	static Future _notifyPreClosingListeners(Scope scope) => _notifyScopeListeners(_getScopeListeners(scope,
+			OnScopeClosing), scope, true);
 
 	static void _notifyPostBindListeners(instance, Scope scope) {
 		_notifyListeners(reflect(instance), _getInstanceListeners(instance, OnBind), scope);
 	}
 
-	static void _notifyPreUnbindListeners(instance, Scope scope) {
-		_notifyListeners(reflect(instance), new List.from(_getInstanceListeners(instance, OnUnbinding).reversed), scope);
-	}
+	static Future _notifyPreUnbindListeners(instance, Scope scope) =>
+		_notifyFutureListeners(reflect(instance), new List.from(_getInstanceListeners(instance, OnUnbinding).reversed), scope);
 
 	static void _notifyPostProvidedBindListeners(provider, instance, Scope scope) {
 		_notifyProvidedListeners(reflect(provider), instance, _getInstanceListeners(provider, OnProvidedBind), scope);
 	}
 
-	static void _notifyPreProvidedUnbindListeners(provider, instance, Scope scope) {
-		_notifyProvidedListeners(reflect(provider), instance, new List.from(_getInstanceListeners(provider, OnProvidedUnbinding).reversed), scope);
-	}
+	static Future _notifyPreProvidedUnbindListeners(provider, instance, Scope scope) =>
+		_notifyFutureProvidedListeners(reflect(provider), instance, new List.from(_getInstanceListeners(provider,
+				OnProvidedUnbinding).reversed), scope);
 
 	static List<Symbol> _getInstanceListeners(instance, bindType) => _getTypeListeners(instance.runtimeType, bindType);
 
@@ -416,9 +414,17 @@ class Registry {
 		return listeners;
 	}
 
-	static void _notifyListeners(InstanceMirror instanceMirror, List<Symbol> listeners, Scope scope) => listeners.forEach((listener) => instanceMirror.invoke(listener, []));
+	static void _notifyListeners(InstanceMirror instanceMirror, List<Symbol> listeners, Scope scope) => listeners.forEach(
+			(listener) => instanceMirror.invoke(listener, []));
 
-	static void _notifyProvidedListeners(InstanceMirror providerMirror, instance, List<Symbol> listeners, Scope scope) => listeners.forEach((listener) => providerMirror.invoke(listener, [instance]));
+	static Future _notifyFutureListeners(InstanceMirror instanceMirror, List<Symbol> listeners, Scope scope) =>
+		Future.forEach(listeners, (listener) => instanceMirror.invoke(listener, []).reflectee);
+
+	static void _notifyProvidedListeners(InstanceMirror providerMirror, instance, List<Symbol> listeners, Scope scope) =>
+			listeners.forEach((listener) => providerMirror.invoke(listener, [instance]));
+
+	static Future _notifyFutureProvidedListeners(InstanceMirror providerMirror, instance, List<Symbol> listeners, Scope scope) =>
+			Future.forEach(listeners, (listener) => providerMirror.invoke(listener, [instance]).reflectee);
 
 	static Future _notifyScopeListeners(Map<Type, _BindingListeners> listeners, Scope scope, bool reversed) {
 		Iterable keys = reversed ? new List.from(listeners.keys, growable: false).reversed : listeners.keys;
@@ -426,7 +432,8 @@ class Registry {
 			_BindingListeners bindingListeners = listeners[clazz];
 			var providerMirror = bindingListeners.providerListeners.isNotEmpty ? reflect(bindingListeners.provider) : null;
 			var instance = bindingListeners.instanceListeners.isNotEmpty ? lookupObject(clazz) : null;
-			return Future.forEach(bindingListeners.providerListeners, (listener) => providerMirror.invoke(listener, []).reflectee).then((_) => instance).then((value) {
+			return Future.forEach(bindingListeners.providerListeners, (listener) => providerMirror.invoke(listener,
+					[]).reflectee).then((_) => instance).then((value) {
 				var valueMirror = reflect(instance);
 				return Future.forEach(bindingListeners.instanceListeners, (listener) => valueMirror.invoke(listener, []).reflectee);
 			});
