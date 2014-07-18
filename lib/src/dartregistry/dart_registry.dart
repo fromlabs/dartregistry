@@ -338,6 +338,8 @@ class Registry {
 		}
 	}
 
+	static Future notifyListeners(Scope scope, bindType, bool reversed) => _notifyScopeListeners(_getScopeListeners(scope, bindType), scope, reversed);
+
 	static Future _notifyPostOpenedListeners(Scope scope) => _notifyScopeListeners(_getScopeListeners(scope,
 			OnScopeOpened), scope, false);
 
