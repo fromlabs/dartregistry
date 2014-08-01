@@ -189,8 +189,8 @@ class Registry {
 		}, zoneValues: {
 			_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()
 		}, onError: (error) {
-			print(error);
-			if (error is Error) {
+			print("Error: $error");
+			if (error is Error && error.stackTrace != null) {
 				print(error.stackTrace);
 			}
 		});
