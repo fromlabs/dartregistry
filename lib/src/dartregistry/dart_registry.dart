@@ -270,6 +270,10 @@ class Registry {
 		return instance;
 	}
 
+	static void injectMembers(instance) {
+	  _injectBindings(instance);
+	}
+
 	static void _injectProviders() {
 		_MODULE._bindings.values.forEach((providerBinding) => _injectBindings(providerBinding.provider));
 	}
