@@ -79,6 +79,8 @@ class Registry {
 
 	static const _SCOPE_CONTEXT_HOLDER = "_SCOPE_CONTEXT_HOLDER";
 
+	static Logger LOGGER = new Logger("dartregistry");
+
 	static RegistryModule _MODULE;
 
 	static _ScopeContext _ISOLATE_SCOPE_CONTEXT;
@@ -88,7 +90,7 @@ class Registry {
 	static Map<Scope, _ScopeContext> _CONTEXTS;
 
 	static Future load(Type moduleClazz, [Map<String, dynamic> parameters = const {}]) {
-		print("Load module");
+	  LOGGER.fine("Load registry module");
 
 		var module = _newInstanceFromClass(moduleClazz);
 		if (module is! RegistryModule) {
@@ -104,7 +106,7 @@ class Registry {
 	}
 
 	static Future unload() {
-		print("Unload module");
+	  LOGGER.fine("Unload module");
 
 		return _MODULE.unconfigure().then((_) {
 			_MODULE = null;
@@ -113,7 +115,7 @@ class Registry {
 	}
 
 	static Future openScope(Scope scope) {
-		print("Open scope $scope");
+	  LOGGER.fine("Open scope $scope");
 
 		if (scope == Scope.NONE) {
 			throw new ArgumentError("Can't open scope context ${Scope.NONE}");
@@ -139,7 +141,7 @@ class Registry {
 	}
 
 	static Future closeScope(Scope scope) {
-		print("Close scope ${scope}");
+	  LOGGER.fine("Close scope ${scope}");
 
 		_ScopeContext scopeContext;
 		_ScopeContextHolder holder = Zone.current[_SCOPE_CONTEXT_HOLDER];
@@ -189,9 +191,9 @@ class Registry {
 		}, zoneValues: {
 			_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()
 		}, onError: (error) {
-			print("Error: $error");
+		  LOGGER.severe("Error: $error");
 			if (error is Error && error.stackTrace != null) {
-				print(error.stackTrace);
+			  LOGGER.severe(error.stackTrace);
 			}
 		});
 	}
@@ -229,7 +231,7 @@ class Registry {
 						if (scopeContext != null) {
 							return _provideInScope(providerBinding.provider, scopeContext);
 						} else {
-							print("Scope context not found for provider binding: $clazz");
+						  LOGGER.warning("Scope context not found for provider binding: $clazz");
 
 							return null;
 						}
