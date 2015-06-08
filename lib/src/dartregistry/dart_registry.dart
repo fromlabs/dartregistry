@@ -190,11 +190,8 @@ class Registry {
 			return openScope(scope).then((_) => runnable()).whenComplete(() => closeScope(scope));
 		}, zoneValues: {
 			_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()
-		}, onError: (error) {
-		  LOGGER.severe("Error: $error");
-			if (error is Error && error.stackTrace != null) {
-			  LOGGER.severe(error.stackTrace);
-			}
+		}, onError: (error, stacktrace) {
+		  LOGGER.severe("Error", error, stacktrace);
 		});
 	}
 
