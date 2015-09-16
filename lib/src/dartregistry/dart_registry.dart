@@ -87,8 +87,6 @@ class Registry {
 
 	static Map<Type, ProviderFunction> _SCOPED_PROVIDERS_CACHE;
 
-	static Map<Scope, _ScopeContext> _CONTEXTS;
-
 	static Future load(Type moduleClazz, [Map<String, dynamic> parameters = const {}]) {
 	  LOGGER.fine("Load registry module");
 
@@ -99,7 +97,6 @@ class Registry {
 		_MODULE = module;
 
 		_SCOPED_PROVIDERS_CACHE = {};
-		_CONTEXTS = {};
 		return _MODULE.configure(parameters).then((_) {
 			_injectProviders();
 		});
@@ -187,11 +184,13 @@ class Registry {
 
 	static runInScope(Scope scope, ScopeRunnable runnable) {
 		return runZoned(() {
-			return openScope(scope).then((_) => runnable()).whenComplete(() => closeScope(scope));
+			return Chain.capture(() {
+				return openScope(scope).then((_) => runnable()).whenComplete(() => closeScope(scope));
+			}, onError: (error, Chain chain) {
+				Logger.root.severe("Running in scope error", error, chain.terse);
+			});
 		}, zoneValues: {
 			_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()
-		}, onError: (error, stacktrace) {
-		  LOGGER.severe("Error", error, stacktrace);
 		});
 	}
 
