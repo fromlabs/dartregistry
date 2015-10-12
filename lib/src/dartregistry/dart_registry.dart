@@ -187,8 +187,7 @@ class Registry {
 			return Chain.capture(() {
 				return openScope(scope).then((_) => runnable()).whenComplete(() => closeScope(scope));
 			}, onError: (error, Chain chain) {
-				LOGGER.severe("Running in scope error", error);
-				LOGGER.severe("StackTrace", chain.terse);
+				LOGGER.severe("Running in scope error", error, chain.terse);
 			});
 		}, zoneValues: {
 			_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()
