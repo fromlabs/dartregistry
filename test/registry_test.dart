@@ -1,6 +1,11 @@
+@GlobalQuantifyCapability(r"^dart.core.DateTime$", Injectable)
+import 'package:reflectable/reflectable.dart';
+
 import "package:dartregistry/dart_registry.dart";
 
 import "dart:async";
+
+import "package:logging/logging.dart";
 
 class TestModule extends RegistryModule {
   static const SCOPE = const Scope("NUOVO");
@@ -20,24 +25,61 @@ class TestModule extends RegistryModule {
 }
 
 Future test() {
+  Logger.root.level = Level.ALL;
+  Logger.root.onRecord.listen((LogRecord logRecord) {
+    print('${logRecord.level.name}: ${logRecord.time}: ${logRecord.message}');
+    if (logRecord.stackTrace != null) {
+      print(logRecord.error);
+      print(logRecord.stackTrace);
+    }
+  });
+
   print("Test");
 
   MyService service = Registry.lookupObject(MyService);
 
+  Injectable.reflect(new DateProvider());
+
+
+  //
+  print(Injectable.annotatedClasses.length);
+
+  for (var i = 0; i < Injectable.annotatedClasses.length; i++) {
+    try {
+      var mirror = Injectable.annotatedClasses.elementAt(i);
+
+      print(mirror.qualifiedName);
+    } on NoSuchCapabilityError catch(e) {
+    }
+  }
+
+  print(Injectable.annotatedClasses.where((mirror) => mirror.hasReflectedType));
+
+/*
+  print(Injectable.libraries.length);
+  for(LibraryMirror library in Injectable.libraries) {
+    for(DeclarationMirror declaration in library.declarations) {
+      print(declaration);
+    }
+  }
+*/
+
   return service.echo("Eccomi").then((msg) => print("Echo: $msg"));
 }
 
+@Injectable
 abstract class Loggable {
   @Inject
-  Provider<LogService> _LOG_SERVICE_PROVIDER;
+  Provider<LogService> LOG_SERVICE_PROVIDER;
 
-  LogService get LOG_SERVICE => _LOG_SERVICE_PROVIDER.get();
+  LogService get LOG_SERVICE => LOG_SERVICE_PROVIDER.get();
 
   void info(String msg) {
     LOG_SERVICE.info(msg);
   }
 }
 
+@Injectable
 class LogService {
   void info(String msg) {
     print(msg);
@@ -64,12 +106,14 @@ class InjectServiceImpl implements InjectService {
 
 class InjectService2Impl implements InjectService2 {}
 
+@Injectable
 abstract class InjectService {
   String echo(String msg);
 }
 
 abstract class InjectService2 {}
 
+@Injectable
 class DateProvider extends Provider<Future<DateTime>> {
   @override
   Future<DateTime> get() => new Future.value(new DateTime.now());
@@ -98,6 +142,7 @@ class DateProvider extends Provider<Future<DateTime>> {
   }
 }
 
+@Injectable
 class StringProvider extends Provider<String> {
   final String msg;
   StringProvider(this.msg);
@@ -140,6 +185,7 @@ class StringProvider extends Provider<String> {
   }
 }
 
+@Injectable
 abstract class MyService {
   Future<String> echo(String msg);
 }
@@ -154,6 +200,7 @@ class MyServiceImpl extends BaseService with Loggable implements MyService {
   }
 }
 
+@Injectable
 abstract class BaseService {
   @Inject
   Provider<Future<DateTime>> dateProvider;
@@ -164,9 +211,9 @@ abstract class BaseService {
   @Inject
   Provider<InjectService> injectServiceProvider;
 
-	// TODO provide
+  // TODO provide
   // @Inject
-	// ProviderFunction<InjectService> provideInjectService;
+  // ProviderFunction<InjectService> provideInjectService;
 
   InjectService get injectService => injectServiceProvider.get();
 
@@ -177,7 +224,7 @@ abstract class BaseService {
   void preUnbind() => print("preUnbind");
 
   Future<String> echo(String msg) {
-		// print(provideInjectService);
+    // print(provideInjectService);
 
     // print("****************** ${provideInjectService()}");
 
