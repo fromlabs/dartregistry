@@ -61,7 +61,7 @@ class A {
 
   Provider<Future> a5;
 
-  Future a6;
+  // Future a6;
 
   // File a7;
 }

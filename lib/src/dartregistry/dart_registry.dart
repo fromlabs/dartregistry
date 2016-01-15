@@ -1,5 +1,8 @@
 part of dartregistry;
 
+// utilizzato solo per compatibilità con la nuova gestione
+const Object Injectable = const _Injectable();
+
 const Object Inject = const _Inject();
 
 const Object OnScopeOpened = const _OnScopeOpened();
@@ -288,20 +291,34 @@ class Registry {
   }
 
   static void _injectBindings(instance) {
+    print("_injectBindings");
+
     var classMirror = reflect(instance).type;
     while (classMirror != null) {
+      print("Class: ${classMirror.simpleName}");
+
       classMirror.declarations.forEach((symbol, DeclarationMirror mirror) {
         if (mirror is VariableMirror) {
+          print("VariableMirror on $symbol");
+
           if (mirror.metadata.contains(reflect(Inject))) {
+            print("Inject");
+
             var variableType = mirror.type;
             if (variableType is ClassMirror &&
                 variableType.isSubclassOf(reflectClass(Provider))) {
+              print("Inject Provider");
+
               if (variableType.typeArguments.length == 1) {
                 var typeMirror = variableType.typeArguments[0];
 
                 if (typeMirror.isSubclassOf(reflectClass(Future))) {
+                  print("Inject Provider<Future>");
+
                   if (typeMirror.typeArguments.length == 1) {
                     typeMirror = typeMirror.typeArguments[0];
+
+                    print("Inject Provider<Future<${typeMirror.simpleName}>>");
                   } else {
                     throw new ArgumentError();
                   }
@@ -314,13 +331,19 @@ class Registry {
               }
             } else if (variableType is ClassMirror &&
                 variableType.reflectedType == Function) {
+              print("Inject Function");
+
               throw new UnimplementedError();
             } else if (variableType is ClassMirror) {
               var typeMirror = variableType;
 
               if (typeMirror.isSubclassOf(reflectClass(Future))) {
+                print("Inject Future");
+
                 if (typeMirror.typeArguments.length == 1) {
                   typeMirror = typeMirror.typeArguments[0];
+
+                  print("Inject Future<${typeMirror.simpleName}>");
                 } else {
                   throw new ArgumentError();
                 }
@@ -330,6 +353,8 @@ class Registry {
                   symbol, Registry.lookupObject(typeMirror.reflectedType));
             } else if (variableType is TypedefMirror &&
                 variableType.isSubtypeOf(reflectClass(ProviderFunction))) {
+              print("Inject ProviderFunction");
+
               if (variableType.typeArguments.length == 1) {
                 var typeMirror = variableType.typeArguments[0];
 
@@ -483,12 +508,21 @@ class Registry {
       var instance = bindingListeners.instanceListeners.isNotEmpty
           ? lookupObject(clazz)
           : null;
+
       return Future
           .forEach(bindingListeners.providerListeners,
               (listener) => providerMirror.invoke(listener, []).reflectee)
           .then((_) => instance)
           .then((value) {
+
+        print(instance);
+
         var valueMirror = reflect(instance);
+
+        print(valueMirror);
+
+        print(bindingListeners.instanceListeners);
+
         return Future.forEach(bindingListeners.instanceListeners,
             (listener) => valueMirror.invoke(listener, []).reflectee);
       });
@@ -512,6 +546,10 @@ class _ScopeContext {
   Scope get scope => _scope;
 
   Map<Provider, dynamic> get bindings => _bindings;
+}
+
+class _Injectable {
+  const _Injectable();
 }
 
 class _Inject {
