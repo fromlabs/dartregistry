@@ -307,9 +307,12 @@ class Registry {
 
   static runInScope(Scope scope, ScopeRunnable runnable) => runZoned(
       () => Chain.capture(() async {
+
             await openScope(scope);
-            await runnable();
+            var result = await runnable();
             await closeScope(scope);
+
+            return result;
           }, onError: (error, Chain chain) {
             _libraryLogger.severe("Running in scope error", error, chain);
           }),
