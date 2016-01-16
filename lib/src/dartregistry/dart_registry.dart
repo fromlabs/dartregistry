@@ -5,47 +5,101 @@ import "dart:async";
 import "package:logging/logging.dart";
 import "package:stack_trace/stack_trace.dart";
 
-@GlobalQuantifyCapability(r"^dart.async.Future$", Injectable)
+@GlobalQuantifyCapability(r"^dart.async.Future$", injectable)
 import 'package:reflectable/reflectable.dart';
 
-final Logger _logger = new Logger("dartregistry");
+final Logger _libraryLogger = new Logger("dartregistry");
 
-const Injectable_ Injectable = const Injectable_();
+const String _FUTURE_TYPE_NAME = "dart.core.Future";
+const String _PROVIDER_TYPE_NAME = "dartregistry.dartregistry.Provider";
+const String _FUNCTION_PROVIDER_TYPE_NAME =
+    "dartregistry.dartregistry.ProvideFunction";
 
-const Module_ Module = const Module_();
+const InjectionModule injectionModule = const InjectionModule();
+const Injectable injectable = const Injectable();
+const Inject inject = const Inject();
 
-const Inject_ Inject = const Inject_();
+class InjectionModule extends Reflectable {
+  const InjectionModule() : super(newInstanceCapability);
+}
 
-const OnScopeOpened = const OnScopeOpened_();
-const OnScopeClosing = const OnScopeClosing_();
+class Injectable extends Reflectable {
+  const Injectable()
+      : super(
+            metadataCapability,
+            typeRelationsCapability,
+            declarationsCapability,
+            instanceInvokeCapability,
+            newInstanceCapability);
+}
 
-const OnBind = const OnBind_();
-const OnUnbinding = const OnUnbinding_();
+@injectable
+class Inject {
+  final Type type;
 
-const OnProvidedBind = const OnProvidedBind_();
-const OnProvidedUnbinding = const OnProvidedUnbinding_();
+  const Inject([this.type]);
+}
 
-typedef T ProviderFunction<T>();
+const onScopeOpened = const OnScopeOpened();
+const onScopeClosing = const OnScopeClosing();
+
+@injectable
+class OnScopeOpened {
+  const OnScopeOpened();
+}
+
+@injectable
+class OnScopeClosing {
+  const OnScopeClosing();
+}
+
+const onBind = const OnBind();
+const onUnbinding = const OnUnbinding();
+
+@injectable
+class OnBind {
+  const OnBind();
+}
+
+@injectable
+class OnUnbinding {
+  const OnUnbinding();
+}
+
+const onProvidedBind = const OnProvidedBind();
+const onProvidedUnbinding = const OnProvidedUnbinding();
+
+@injectable
+class OnProvidedBind {
+  const OnProvidedBind();
+}
+
+@injectable
+class OnProvidedUnbinding {
+  const OnProvidedUnbinding();
+}
+
+typedef T ProvideFunction<T>();
 
 typedef ScopeRunnable();
 
 void logReflector(Reflectable reflector) {
-  _logger.finest("******************************");
-  _logger.fine(
+  _libraryLogger.finest("******************************");
+  _libraryLogger.fine(
       "Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
   for (var i = 0; i < reflector.annotatedClasses.length; i++) {
     try {
       var mirror = reflector.annotatedClasses.elementAt(i);
 
-      _logger.finest(mirror.qualifiedName);
+      _libraryLogger.finest(mirror.qualifiedName);
     } on NoSuchCapabilityError catch (e) {
-      _logger.warning("Skip class", e);
+      _libraryLogger.warning("Skip class", e);
     }
   }
-  _logger.finest("******************************");
+  _libraryLogger.finest("******************************");
 }
 
-@Injectable
+@injectable
 abstract class Provider<T> {
   T get();
 }
@@ -61,6 +115,7 @@ class Scope {
   String toString() => this.id;
 }
 
+@injectionModule
 abstract class RegistryModule {
   Map<Type, _ProviderBinding> _bindings;
 
@@ -86,12 +141,12 @@ abstract class RegistryModule {
         new _ProviderBinding(clazz, scope, new ToClassProvider(clazzImpl)));
   }
 
-  void bindProviderFunction(
-      Type clazz, Scope scope, ProviderFunction providerFunction) {
+  void bindProvideFunction(
+      Type clazz, Scope scope, ProvideFunction provideFunction) {
     _addProviderBinding(
         clazz,
         new _ProviderBinding(
-            clazz, scope, new ToFunctionProvider(providerFunction)));
+            clazz, scope, new ToFunctionProvider(provideFunction)));
   }
 
   void bindProvider(Type clazz, Scope scope, Provider provider) {
@@ -116,16 +171,16 @@ class Registry {
 
   static _ScopeContext _ISOLATE_SCOPE_CONTEXT;
 
-  static Map<Type, ProviderFunction> _SCOPED_PROVIDERS_CACHE;
+  static Map<Type, ProvideFunction> _SCOPED_PROVIDERS_CACHE;
 
   static Future load(Type moduleClazz,
       [Map<String, dynamic> parameters = const {}]) async {
-    _logger.finest("Load registry module");
+    _libraryLogger.finest("Load registry module");
 
-    logReflector(Injectable);
+    logReflector(injectable);
 
-    var module =
-        (Module.reflectType(moduleClazz) as ClassMirror).newInstance("", []);
+    var module = (injectionModule.reflectType(moduleClazz) as ClassMirror)
+        .newInstance("", []);
 
     if (module is! RegistryModule) {
       throw new ArgumentError("$moduleClazz is not a registry module");
@@ -141,7 +196,7 @@ class Registry {
   }
 
   static Future unload() async {
-    _logger.finest("Unload module");
+    _libraryLogger.finest("Unload module");
 
     try {
       await _MODULE.unconfigure();
@@ -152,7 +207,7 @@ class Registry {
   }
 
   static Future openScope(Scope scope) async {
-    _logger.finest("Open scope $scope");
+    _libraryLogger.finest("Open scope $scope");
 
     if (scope == Scope.NONE) {
       throw new ArgumentError("Can't open scope context ${Scope.NONE}");
@@ -180,7 +235,7 @@ class Registry {
   }
 
   static Future closeScope(Scope scope) async {
-    _logger.finest("Close scope ${scope}");
+    _libraryLogger.finest("Close scope ${scope}");
 
     _ScopeContext scopeContext;
 
@@ -233,21 +288,21 @@ class Registry {
             await runnable();
             await closeScope(scope);
           }, onError: (error, Chain chain) {
-            _logger.severe("Running in scope error", error, chain);
+            _libraryLogger.severe("Running in scope error", error, chain);
           }),
       zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
 
   static lookupObject(Type clazz) {
-    ProviderFunction provider = lookupProviderFunction(clazz);
-    if (provider != null) {
-      return provider();
+    ProvideFunction provide = lookupProvideFunction(clazz);
+    if (provide != null) {
+      return provide();
     } else {
       throw new ArgumentError("Provider not found: $clazz");
     }
   }
 
   static lookupProvider(Type clazz) {
-    ProviderFunction provider = lookupProviderFunction(clazz);
+    ProvideFunction provider = lookupProvideFunction(clazz);
     if (provider != null) {
       return new ToFunctionProvider(provider);
     } else {
@@ -255,14 +310,14 @@ class Registry {
     }
   }
 
-  static ProviderFunction lookupProviderFunction(Type clazz) {
+  static ProvideFunction lookupProvideFunction(Type clazz) {
     if (_MODULE == null) {
       throw new StateError("Registry module not loaded");
     }
 
     _ProviderBinding providerBinding = _MODULE._getProviderBinding(clazz);
     if (providerBinding != null) {
-      ProviderFunction scopedProvider = _SCOPED_PROVIDERS_CACHE[clazz];
+      ProvideFunction scopedProvider = _SCOPED_PROVIDERS_CACHE[clazz];
       if (scopedProvider == null) {
         scopedProvider = () {
           if (providerBinding.scope != Scope.NONE) {
@@ -271,7 +326,7 @@ class Registry {
             if (scopeContext != null) {
               return _provideInScope(providerBinding.provider, scopeContext);
             } else {
-              _logger.warning(
+              _libraryLogger.warning(
                   "Scope context not found for provider binding: $clazz");
 
               return null;
@@ -324,87 +379,71 @@ class Registry {
   }
 
   static void _injectBindings(instance) {
-    _logger.finest("Inject bindings on $instance");
+    _libraryLogger.finest("Inject bindings on $instance");
 
-    if (!Injectable.canReflect(instance)) {
-      _logger.finest("$instance is not reflected");
+    if (!injectable.canReflect(instance)) {
+      _libraryLogger.finest("$instance is not reflected");
       return;
     }
 
-    var instanceMirror = Injectable.reflect(instance);
+    var instanceMirror = injectable.reflect(instance);
     var classMirror = instanceMirror.type;
     while (classMirror != null) {
-      _logger.finest("Inject bindings on class ${classMirror.simpleName}");
+      _libraryLogger
+          .finest("Inject bindings on class ${classMirror.simpleName}");
 
       classMirror.declarations.forEach((name, DeclarationMirror mirror) {
         if (mirror is VariableMirror) {
-          if (mirror.metadata.contains(Inject)) {
-            _logger.finest("Inject on variable $name");
+          Inject injectInstance =
+              _lookupMetadataOfType(mirror.metadata, Inject);
+          if (injectInstance != null) {
+            var boundType = injectInstance.type;
+
+            _libraryLogger
+                .finest("Inject on variable $name bound to ${boundType ??
+                    "unspecified"}");
 
             var variableType = mirror.type;
-            if (variableType is ClassMirror) {
-              if (variableType.isSubclassOf(Injectable.reflectType(Provider))) {
-                if (variableType.typeArguments.length == 1) {
-                  var typeMirror = variableType.typeArguments[0];
+            if (_isGenericTypeOf(variableType, _PROVIDER_TYPE_NAME)) {
+              _libraryLogger.finest("Provider injection");
 
-                  if (typeMirror.isSubclassOf(Injectable.reflectType(Future))) {
-                    if (typeMirror.typeArguments.length == 1) {
-                      typeMirror = typeMirror.typeArguments[0];
-
-                      _logger.finest(
-                          "Injecting Provider<Future<${typeMirror.simpleName}>>");
-                    } else {
-                      throw new ArgumentError();
-                    }
-                  } else {
-                    _logger
-                        .finest("Injecting Provider<${typeMirror.simpleName}>");
-                  }
-
-                  instanceMirror.invokeSetter(
-                      name, Registry.lookupProvider(typeMirror.reflectedType));
-                } else {
-                  throw new ArgumentError();
-                }
-/*
-              } else if (variableType.isSubclassOf(functionTypeMirror)) {
-                // TODO injection di funzioni
-                print("Inject Function");
-
-
-                print("UnimplementedError");
-                throw new UnimplementedError();
-*/
-              } else if (variableType.hasReflectedType) {
-                var typeMirror = variableType;
-
-                if (typeMirror.isSubclassOf(Injectable.reflectType(Future))) {
-                  if (typeMirror.typeArguments.length == 1) {
-                    typeMirror = typeMirror.typeArguments[0];
-
-                    _logger
-                        .finest("Injecting Future<${typeMirror.simpleName}>");
-                  } else {
-                    throw new ArgumentError();
-                  }
-                } else {
-                  _logger.finest("Injecting ${typeMirror.simpleName}");
-                }
+              if (boundType != null) {
+                _libraryLogger.finest("Injecting $boundType");
 
                 instanceMirror.invokeSetter(
-                    name, Registry.lookupProvider(typeMirror.reflectedType));
+                    name, Registry.lookupProvider(boundType));
               } else {
                 throw new ArgumentError();
               }
-/*
-            } else if (variableType is TypedefMirror &&
-                variableType.isSubtypeOf(providerFunctionTypeMirror)) {
-              // TODO injection di ProviderFunction
-              print("Inject ProviderFunction");
+            } else if (_isGenericTypeOf(variableType, _FUTURE_TYPE_NAME)) {
+              _libraryLogger.finest("Future injection");
 
-              print("UnimplementedError");
-              throw new UnimplementedError();
-*/
+              if (boundType != null) {
+                _libraryLogger.finest("Injecting $boundType");
+
+                instanceMirror.invokeSetter(
+                    name, Registry.lookupProvider(boundType));
+              } else {
+                throw new ArgumentError();
+              }
+            } else if (_isGenericTypeOf(
+                variableType, _FUNCTION_PROVIDER_TYPE_NAME)) {
+              _libraryLogger.finest("Provide function injection");
+
+              if (boundType != null) {
+                _libraryLogger.finest("Injecting $boundType");
+
+                instanceMirror.invokeSetter(
+                    name, Registry.lookupProvideFunction(boundType));
+              } else {
+                throw new ArgumentError();
+              }
+            } else if (variableType is ClassMirror &&
+                variableType.hasReflectedType) {
+              _libraryLogger.finest("Injecting ${variableType.simpleName}");
+
+              instanceMirror.invokeSetter(
+                  name, Registry.lookupObject(variableType.reflectedType));
             } else {
               throw new ArgumentError();
             }
@@ -415,7 +454,7 @@ class Registry {
       try {
         classMirror = classMirror.superclass;
       } on NoSuchCapabilityError catch (e) {
-        _logger.finest(
+        _libraryLogger.finest(
             "super class of ${classMirror.simpleName} is not reflected", e);
 
         classMirror = null;
@@ -423,7 +462,7 @@ class Registry {
     }
   }
 
-  static Future notifyListeners(Scope scope, bindType, bool reversed) =>
+  static Future notifyListeners(Scope scope, Type bindType, bool reversed) =>
       _notifyScopeListeners(
           _getScopeListeners(scope, bindType), scope, reversed);
 
@@ -431,159 +470,243 @@ class Registry {
       _notifyScopeListeners(
           _getScopeListeners(scope, OnScopeOpened), scope, false);
 
-  static Future _notifyPreClosingListeners(Scope scope) =>
-      _notifyScopeListeners(
-          _getScopeListeners(scope, OnScopeClosing), scope, true);
-
-  static void _notifyPostBindListeners(instance, Scope scope) {
-    if (Injectable.canReflect(instance)) {
-      _notifyListeners(Injectable.reflect(instance),
-          _getInstanceListeners(instance, OnBind), scope);
-    } else {
-      _logger.finest("$instance not reflected");
-    }
+  static Future _notifyPreClosingListeners(Scope scope) {
+    return _notifyScopeListeners(
+        _getScopeListeners(scope, OnScopeClosing), scope, true);
   }
 
-  static Future _notifyPreUnbindListeners(instance, Scope scope) {
-    if (Injectable.canReflect(instance)) {
-      return _notifyFutureListeners(
-          Injectable.reflect(instance),
+  static void _notifyPostBindListeners(instance, Scope scope) =>
+      _notifyListeners(
+          instance, _getInstanceListeners(instance, OnBind), scope);
+
+  static Future _notifyPreUnbindListeners(instance, Scope scope) =>
+      _notifyFutureListeners(
+          instance,
           new List.from(_getInstanceListeners(instance, OnUnbinding).reversed),
           scope);
-    } else {
-      _logger.finest("$instance not reflected");
-      return new Future.value();
-    }
-  }
 
   static void _notifyPostProvidedBindListeners(
-      provider, instance, Scope scope) {
-    _notifyProvidedListeners(Injectable.reflect(provider), instance,
-        _getInstanceListeners(provider, OnProvidedBind), scope);
-  }
+          Provider provider, instance, Scope scope) =>
+      _notifyProvidedListeners(provider, instance,
+          _getInstanceListeners(provider, OnProvidedBind), scope);
 
   static Future _notifyPreProvidedUnbindListeners(
-          provider, instance, Scope scope) =>
+          Provider provider, instance, Scope scope) =>
       _notifyFutureProvidedListeners(
-          Injectable.reflect(provider),
+          provider,
           instance,
           new List.from(
               _getInstanceListeners(provider, OnProvidedUnbinding).reversed),
           scope);
 
-  static List<String> _getInstanceListeners(instance, bindType) {
-    // TODO eliminare utilizzo di runtimeType
+  static List<String> _getInstanceListeners(instance, Type bindType) {
+    _libraryLogger.finest("Get $bindType listeners on instance $instance");
 
-    return _getTypeListeners(instance.runtimeType, bindType);
+    if (injectable.canReflect(instance)) {
+      var typeMirror = injectable.reflect(instance).type;
+      if (typeMirror.hasReflectedType) {
+        return _getTypeListeners(typeMirror.reflectedType, bindType);
+      }
+    }
+
+    _libraryLogger.finest("$instance is not reflected");
+
+    return [];
   }
 
   static Map<Type, _BindingListeners> _getScopeListeners(
-      Scope scope, bindType) {
+      Scope scope, Type bindType) {
+    _libraryLogger.finest("Get $bindType listeners on scope $scope");
+
     var listeners = {};
     _MODULE?._bindings?.forEach((clazz, binding) {
       if (binding.scope == scope) {
-        _getInstanceListeners(binding.provider, bindType).forEach((symbol) {
+        var instanceListeners =
+            _getInstanceListeners(binding.provider, bindType);
+        for (var symbol in instanceListeners) {
           _BindingListeners bindingListeners = listeners[clazz];
           if (bindingListeners == null) {
             bindingListeners = new _BindingListeners(binding.provider);
             listeners[clazz] = bindingListeners;
           }
           bindingListeners.providerListeners.add(symbol);
-        });
+        }
 
         var target;
         if (binding.provider is ToInstanceProvider) {
-          // TODO eliminare utilizzo di runtimeType
-          target = binding.provider._instance.runtimeType;
+          target =
+              injectable.reflect(binding.provider._instance).type.reflectedType;
         } else if (binding.provider is ToClassProvider) {
           target = binding.provider._clazz;
         } else {
           target = clazz;
         }
 
-        _getTypeListeners(target, bindType).forEach((symbol) {
+        var typeListeners = _getTypeListeners(target, bindType);
+        for (var symbol in typeListeners) {
           _BindingListeners bindingListeners = listeners[clazz];
           if (bindingListeners == null) {
             bindingListeners = new _BindingListeners(binding.provider);
             listeners[clazz] = bindingListeners;
           }
           bindingListeners.instanceListeners.add(symbol);
-        });
+        }
       }
     });
+
     return listeners;
   }
 
-  static List<String> _getTypeListeners(Type type, bindType) {
+  static List<String> _getTypeListeners(Type type, Type bindType) {
+    _libraryLogger.finest("Get $bindType listeners on type $type");
+
     var listeners = [];
-    var classMirror = Injectable.reflectType(type);
-    while (classMirror != null) {
-      classMirror.declarations.forEach((symbol, DeclarationMirror mirror) {
-        if (mirror is MethodMirror) {
-          if (mirror.metadata.contains(bindType)) {
-            listeners.add(symbol);
+    if (injectable.canReflectType(type)) {
+      var classMirror = injectable.reflectType(type);
+      while (classMirror != null) {
+        classMirror.declarations.forEach((symbol, DeclarationMirror mirror) {
+          if (mirror is MethodMirror) {
+            var bindInstance = _lookupMetadataOfType(mirror.metadata, bindType);
+            if (bindInstance != null) {
+              listeners.add(symbol);
+            }
           }
+        });
+
+        try {
+          classMirror = classMirror.superclass;
+
+          _libraryLogger.finest("super class ${classMirror.simpleName}");
+        } on NoSuchCapabilityError catch (e) {
+          _libraryLogger.finest(
+              "super class of ${classMirror.simpleName} is not reflected", e);
+
+          classMirror = null;
         }
-      });
-
-      try {
-        classMirror = classMirror.superclass;
-
-        _logger.finest("super class ${classMirror.simpleName}");
-      } on NoSuchCapabilityError catch (e) {
-        _logger.finest(
-            "super class of ${classMirror.simpleName} is not reflected", e);
-
-        classMirror = null;
       }
+    } else {
+      _libraryLogger.finest("$type is not reflected");
     }
     return listeners;
   }
 
-  static void _notifyListeners(
-          InstanceMirror instanceMirror, List<String> listeners, Scope scope) =>
-      listeners.forEach((listener) => instanceMirror.invoke(listener, []));
+  static void _notifyListeners(instance, List<String> listeners, Scope scope) {
+    _libraryLogger.finest(
+        "Notify ${listeners.length} listeners on instance $instance in scope $scope");
+
+    if (injectable.canReflect(instance)) {
+      var instanceMirror = injectable.reflect(instance);
+
+      for (var listener in listeners) {
+        instanceMirror.invoke(listener, []);
+      }
+    } else {
+      _libraryLogger.finest("$instance not reflected");
+    }
+  }
 
   static Future _notifyFutureListeners(
-          InstanceMirror instanceMirror, List<String> listeners, Scope scope) =>
-      Future.forEach(
+      instance, List<String> listeners, Scope scope) async {
+    _libraryLogger.finest(
+        "Notify ${listeners.length} listeners on future of instance $instance in scope $scope");
+
+    if (injectable.canReflect(instance)) {
+      var instanceMirror = injectable.reflect(instance);
+
+      await Future.forEach(
           listeners, (listener) => instanceMirror.invoke(listener, []));
+    } else {
+      _libraryLogger.finest("$instance not reflected");
+    }
+  }
 
-  static void _notifyProvidedListeners(InstanceMirror providerMirror, instance,
-          List<String> listeners, Scope scope) =>
-      listeners
-          .forEach((listener) => providerMirror.invoke(listener, [instance]));
+  static void _notifyProvidedListeners(
+      Provider provider, instance, List<String> listeners, Scope scope) {
+    _libraryLogger.finest(
+        "Notify ${listeners.length} listeners on provider $provider of instance $instance in scope $scope");
 
-  static Future _notifyFutureProvidedListeners(InstanceMirror providerMirror,
-          instance, List<String> listeners, Scope scope) =>
-      Future.forEach(
+    if (injectable.canReflect(provider)) {
+      var providerMirror = injectable.reflect(provider);
+
+      for (var listener in listeners) {
+        providerMirror.invoke(listener, [instance]);
+      }
+    } else {
+      _libraryLogger.finest("$provider not reflected");
+    }
+  }
+
+  static Future _notifyFutureProvidedListeners(
+      Provider provider, instance, List<String> listeners, Scope scope) async {
+    _libraryLogger.finest(
+        "Notify ${listeners.length} listeners on provider $provider of future instance $instance in scope $scope");
+
+    if (injectable.canReflect(provider)) {
+      var providerMirror = injectable.reflect(provider);
+
+      await Future.forEach(
           listeners, (listener) => providerMirror.invoke(listener, [instance]));
+    } else {
+      _libraryLogger.finest("$provider not reflected");
+    }
+  }
 
-  static Future _notifyScopeListeners(
-      Map<Type, _BindingListeners> listeners, Scope scope, bool reversed) {
+  static Future _notifyScopeListeners(Map<Type, _BindingListeners> listeners,
+      Scope scope, bool reversed) async {
+    _libraryLogger
+        .finest("Notify ${listeners.length} scope listeners on scope $scope");
+
     Iterable keys = reversed
         ? new List.from(listeners.keys, growable: false).reversed
         : listeners.keys;
-    return Future.forEach(keys, (clazz) {
+
+    await Future.forEach(keys, (clazz) async {
       _BindingListeners bindingListeners = listeners[clazz];
+
       var providerMirror = bindingListeners.providerListeners.isNotEmpty
-          ? Injectable.reflect(bindingListeners.provider)
+          ? injectable.reflect(bindingListeners.provider)
           : null;
+
+      await Future.forEach(bindingListeners.providerListeners,
+          (listener) => providerMirror.invoke(listener, []));
+
       var instance = bindingListeners.instanceListeners.isNotEmpty
           ? lookupObject(clazz)
           : null;
 
-      return Future
-          .forEach(bindingListeners.providerListeners,
-              (listener) => providerMirror.invoke(listener, []))
-          .then((_) => instance)
-          .then((value) {
-        var valueMirror =
-            instance != null ? Injectable.reflect(instance) : null;
-        return Future.forEach(bindingListeners.instanceListeners,
-            (listener) => valueMirror.invoke(listener, []));
-      });
+      var instanceMirror =
+          instance != null ? injectable.reflect(instance) : null;
+
+      await Future.forEach(bindingListeners.instanceListeners,
+          (listener) => instanceMirror.invoke(listener, []));
     });
+  }
+
+  // TODO per semplicità vado puntuale sui nodi (c'erano problemi con reflectable in dart2js)
+  static bool _isGenericTypeOf(TypeMirror typeMirror, String genericType) =>
+      typeMirror.qualifiedName == genericType;
+
+  static _lookupMetadataOfType(List metadata, Type type) {
+    if (injectable.canReflectType(type)) {
+      var typeMirror = injectable.reflectType(type);
+      var list = metadata.where((annotation) {
+        if (injectable.canReflect(annotation)) {
+          var annotationMirror = injectable.reflect(annotation);
+          var annotationTypeMirror = annotationMirror.type;
+
+          // TODO per semplicità vado puntuale sui nodi (c'erano problemi con reflectable in dart2js)
+          return annotationTypeMirror.qualifiedName == typeMirror.qualifiedName;
+        } else {
+          return false;
+        }
+      }).toList(growable: false);
+
+      return list.isNotEmpty ? list.single : null;
+    } else {
+      _libraryLogger.finest("Annotation $type is not reflected");
+
+      return null;
+    }
   }
 }
 
@@ -599,68 +722,26 @@ class _ScopeContext {
   Map<Provider, dynamic> get bindings => _bindings;
 }
 
-class Module_ extends Reflectable {
-  const Module_() : super(newInstanceCapability);
-}
-
-class Injectable_ extends Reflectable {
-  const Injectable_()
-      : super(
-            metadataCapability,
-            typeRelationsCapability,
-            declarationsCapability,
-            instanceInvokeCapability,
-            newInstanceCapability);
-}
-
-class Inject_ {
-  const Inject_();
-}
-
-class OnScopeOpened_ {
-  const OnScopeOpened_();
-}
-
-class OnScopeClosing_ {
-  const OnScopeClosing_();
-}
-
-class OnBind_ {
-  const OnBind_();
-}
-
-class OnUnbinding_ {
-  const OnUnbinding_();
-}
-
-class OnProvidedBind_ {
-  const OnProvidedBind_();
-}
-
-class OnProvidedUnbinding_ {
-  const OnProvidedUnbinding_();
-}
-
-@Injectable
+@injectable
 class ToFunctionProvider<T> extends Provider<T> {
-  final ProviderFunction<T> _function;
+  final ProvideFunction<T> _function;
 
   ToFunctionProvider(this._function);
 
   T get() => _function();
 }
 
-@Injectable
+@injectable
 class ToClassProvider<T> extends Provider<T> {
   final Type _clazz;
 
   ToClassProvider(this._clazz);
 
   T get() =>
-      (Injectable.reflectType(_clazz) as ClassMirror).newInstance("", []);
+      (injectable.reflectType(_clazz) as ClassMirror).newInstance("", []);
 }
 
-@Injectable
+@injectable
 class ToInstanceProvider<T> extends Provider<T> {
   final T _instance;
 

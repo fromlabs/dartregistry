@@ -76,7 +76,7 @@ class CCC extends CC {}
 
 class CCb extends CCC {}
 
-typedef T ProviderFunction<T>();
+typedef T ProvideFunction<T>();
 
 class A {
   @inject

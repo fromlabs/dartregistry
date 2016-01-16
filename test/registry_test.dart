@@ -1,4 +1,4 @@
-@GlobalQuantifyCapability(r"^dart.core.(String|DateTime)$", Injectable)
+@GlobalQuantifyCapability(r"^dart.core.(String|DateTime)$", injectable)
 import 'package:reflectable/reflectable.dart';
 
 import "package:dartregistry/dart_registry.dart";
@@ -10,7 +10,7 @@ import "package:stack_trace/stack_trace.dart";
 
 final _logger = Logger.root;
 
-@Module
+@injectionModule
 class TestModule extends RegistryModule {
   static const SCOPE = const Scope("NUOVO");
 
@@ -38,9 +38,9 @@ test() async {
   return service.echo("Eccomi").then((msg) => print("Echo: $msg"));
 }
 
-@Injectable
+@injectable
 abstract class Loggable {
-  @Inject
+  @Inject(LogService)
   Provider<LogService> LOG_SERVICE_PROVIDER;
 
   LogService get LOG_SERVICE => LOG_SERVICE_PROVIDER.get();
@@ -50,16 +50,16 @@ abstract class Loggable {
   }
 }
 
-@Injectable
+@injectable
 class LogService {
   void info(String msg) {
     _logger.info(msg);
   }
 }
 
-@Injectable
+@injectable
 class InjectServiceImpl implements InjectService {
-  @OnScopeOpened
+  @onScopeOpened
   init() async {
     _logger.info("*** init InjectServiceImpl ***");
 
@@ -68,7 +68,7 @@ class InjectServiceImpl implements InjectService {
     _logger.info("*** init InjectServiceImpl ok ***");
   }
 
-  @OnScopeClosing
+  @onScopeClosing
   deinit() async {
     _logger.info("*** deinit InjectServiceImpl ***");
 
@@ -80,27 +80,27 @@ class InjectServiceImpl implements InjectService {
   String echo(String msg) => msg;
 }
 
-@Injectable
+@injectable
 abstract class InjectService {
   String echo(String msg);
 }
 
-@Injectable
+@injectable
 class DateProvider extends Provider<Future<DateTime>> {
   @override
   Future<DateTime> get() async => new DateTime.now();
 
-  @OnBind
+  @onBind
   void postBind1() {
     _logger.info("DateProvider postBind");
   }
 
-  @OnUnbinding
+  @onUnbinding
   void preUnbind1() {
     _logger.info("DateProvider preUnbind");
   }
 
-  @OnProvidedBind
+  @onProvidedBind
   void postProvidedBind(Future future) {
     _logger.info("DateProvider postProvidedBind");
 
@@ -108,7 +108,7 @@ class DateProvider extends Provider<Future<DateTime>> {
         (date) => _logger.info("DateProvider postProvidedBind finish: $date"));
   }
 
-  @OnProvidedUnbinding
+  @onProvidedUnbinding
   void preProvidedUnbind(Future future) {
     _logger.info("DateProvider preProvidedUnbind");
 
@@ -117,7 +117,7 @@ class DateProvider extends Provider<Future<DateTime>> {
   }
 }
 
-@Injectable
+@injectable
 class StringProvider extends Provider<String> {
   final String msg;
 
@@ -126,7 +126,7 @@ class StringProvider extends Provider<String> {
   @override
   String get() => msg;
 
-  @OnScopeOpened
+  @onScopeOpened
   init() async {
     _logger.info("*** init StringProvider ***");
 
@@ -135,7 +135,7 @@ class StringProvider extends Provider<String> {
     _logger.info("*** init StringProvider ok ***");
   }
 
-  @OnScopeClosing
+  @onScopeClosing
   deinit() async {
     _logger.info("*** deinit StringProvider ***");
 
@@ -144,33 +144,33 @@ class StringProvider extends Provider<String> {
     _logger.info("*** deinit StringProvider ok ***");
   }
 
-  @OnBind
+  @onBind
   void postBind() {
     _logger.info("StringProvider postBind");
   }
 
-  @OnUnbinding
+  @onUnbinding
   void preUnbind() {
     _logger.info("StringProvider preUnbind");
   }
 
-  @OnProvidedBind
+  @onProvidedBind
   void postProvidedBind(instance) {
     _logger.info("StringProvider postProvidedBind: $instance");
   }
 
-  @OnProvidedUnbinding
+  @onProvidedUnbinding
   void preProvidedUnbind(instance) {
     _logger.info("StringProvider preProvidedUnbind: $instance");
   }
 }
 
-@Injectable
+@injectable
 abstract class MyService {
   Future<String> echo(String msg);
 }
 
-@Injectable
+@injectable
 class MyServiceImpl extends BaseService with Loggable implements MyService {
   Future<String> echo(String msg) async {
     info("-> Start");
@@ -185,23 +185,31 @@ class MyServiceImpl extends BaseService with Loggable implements MyService {
   }
 }
 
-@Injectable
+@injectable
 abstract class BaseService {
-  @Inject
+  @Inject(DateTime)
   Provider<Future<DateTime>> dateProvider;
 
-  @Inject
+  @Inject(String)
   Provider<String> stringProvider;
 
-  @Inject
+  @Inject(InjectService)
+  InjectService injectService;
+
+  @Inject(InjectService)
   Provider<InjectService> injectServiceProvider;
 
-  InjectService get injectService => injectServiceProvider.get();
+  @Inject(InjectService)
+  ProvideFunction<InjectService> provideInjectService;
 
-  @OnBind
+  InjectService get injectService3 => provideInjectService();
+
+  InjectService get injectService2 => injectServiceProvider.get();
+
+  @onBind
   void postBind() => _logger.info("postBind");
 
-  @OnUnbinding
+  @onUnbinding
   void preUnbind() => _logger.info("preUnbind");
 
   Future<String> echo(String msg) async {
