@@ -8,18 +8,22 @@ import "package:stack_trace/stack_trace.dart";
 @GlobalQuantifyCapability(r"^dart.async.Future$", Injectable)
 import 'package:reflectable/reflectable.dart';
 
-const _Injectable Injectable = const _Injectable();
+final Logger _logger = new Logger("dartregistry");
 
-const Inject = const _Inject();
+const Injectable_ Injectable = const Injectable_();
 
-const OnScopeOpened = const _OnScopeOpened();
-const OnScopeClosing = const _OnScopeClosing();
+const Module_ Module = const Module_();
 
-const OnBind = const _OnBind();
-const OnUnbinding = const _OnUnbinding();
+const Inject_ Inject = const Inject_();
 
-const OnProvidedBind = const _OnProvidedBind();
-const OnProvidedUnbinding = const _OnProvidedUnbinding();
+const OnScopeOpened = const OnScopeOpened_();
+const OnScopeClosing = const OnScopeClosing_();
+
+const OnBind = const OnBind_();
+const OnUnbinding = const OnUnbinding_();
+
+const OnProvidedBind = const OnProvidedBind_();
+const OnProvidedUnbinding = const OnProvidedUnbinding_();
 
 typedef T ProviderFunction<T>();
 
@@ -30,7 +34,21 @@ abstract class Provider<T> {
   T get();
 }
 
-@Injectable
+void logCapabilities(Reflectable reflector) {
+  _logger.finest("******************************");
+  _logger.fine("Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
+  for (var i = 0; i < reflector.annotatedClasses.length; i++) {
+    try {
+      var mirror = reflector.annotatedClasses.elementAt(i);
+
+      _logger.finest(mirror.qualifiedName);
+    } on NoSuchCapabilityError catch(e) {
+      _logger.warning("Skip class", e);
+    }
+  }
+  _logger.finest("******************************");
+}
+
 abstract class RegistryModule {
   Map<Type, _ProviderBinding> _bindings;
 
@@ -60,6 +78,8 @@ abstract class RegistryModule {
         new _ProviderBinding(clazz, scope, new ToClassProvider(clazzImpl)));
   }
 
+  // TODO supportare ProviderFunction
+/*
   void bindProviderFunction(
       Type clazz, Scope scope, ProviderFunction providerFunction) {
     _addProviderBinding(
@@ -67,6 +87,7 @@ abstract class RegistryModule {
         new _ProviderBinding(
             clazz, scope, new ToFunctionProvider(providerFunction)));
   }
+*/
 
   void bindProvider(Type clazz, Scope scope, Provider provider) {
     _addProviderBinding(clazz, new _ProviderBinding(clazz, scope, provider));
@@ -97,8 +118,6 @@ class Scope {
 class Registry {
   static const _SCOPE_CONTEXT_HOLDER = "_SCOPE_CONTEXT_HOLDER";
 
-  static Logger LOGGER = new Logger("dartregistry");
-
   static RegistryModule _MODULE;
 
   static _ScopeContext _ISOLATE_SCOPE_CONTEXT;
@@ -107,9 +126,12 @@ class Registry {
 
   static Future load(Type moduleClazz,
       [Map<String, dynamic> parameters = const {}]) {
-    LOGGER.fine("Load registry module");
+    _logger.finest("Load registry module");
 
-    var module = _newInstanceFromClass(moduleClazz);
+    logCapabilities(Injectable);
+
+    var module =
+        (Module.reflectType(moduleClazz) as ClassMirror).newInstance("", []);
     if (module is! RegistryModule) {
       throw new ArgumentError("$moduleClazz is not a registry module");
     }
@@ -122,7 +144,7 @@ class Registry {
   }
 
   static Future unload() {
-    LOGGER.fine("Unload module");
+    _logger.finest("Unload module");
 
     return _MODULE.unconfigure().then((_) {
       _MODULE = null;
@@ -131,7 +153,7 @@ class Registry {
   }
 
   static Future openScope(Scope scope) {
-    LOGGER.fine("Open scope $scope");
+    _logger.finest("Open scope $scope");
 
     if (scope == Scope.NONE) {
       throw new ArgumentError("Can't open scope context ${Scope.NONE}");
@@ -159,7 +181,7 @@ class Registry {
   }
 
   static Future closeScope(Scope scope) {
-    LOGGER.fine("Close scope ${scope}");
+    _logger.finest("Close scope ${scope}");
 
     _ScopeContext scopeContext;
     _ScopeContextHolder holder = Zone.current[_SCOPE_CONTEXT_HOLDER];
@@ -209,7 +231,7 @@ class Registry {
             .then((_) => runnable())
             .whenComplete(() => closeScope(scope));
       }, onError: (error, Chain chain) {
-        LOGGER.severe("Running in scope error", error, chain);
+        _logger.severe("Running in scope error", error, chain);
       });
     }, zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
   }
@@ -248,7 +270,7 @@ class Registry {
             if (scopeContext != null) {
               return _provideInScope(providerBinding.provider, scopeContext);
             } else {
-              LOGGER.warning(
+              _logger.warning(
                   "Scope context not found for provider binding: $clazz");
 
               return null;
@@ -300,17 +322,23 @@ class Registry {
   }
 
   static void _injectBindings(instance) {
+    _logger.finest("Inject bindings on $instance");
+
     if (!Injectable.canReflect(instance)) {
-      LOGGER.warning("$instance not reflected");
+      _logger.finest("$instance is not reflected");
       return;
     }
 
     var instanceMirror = Injectable.reflect(instance);
     var classMirror = instanceMirror.type;
     while (classMirror != null) {
+      _logger.finest("Inject bindings on class ${classMirror.simpleName}");
+
       classMirror.declarations.forEach((name, DeclarationMirror mirror) {
         if (mirror is VariableMirror) {
           if (mirror.metadata.contains(Inject)) {
+            _logger.finest("Inject on variable ${mirror.simpleName}");
+
             var variableType = mirror.type;
             if (variableType is ClassMirror) {
               if (variableType.isSubclassOf(Injectable.reflectType(Provider))) {
@@ -332,9 +360,10 @@ class Registry {
                 }
 /*
               } else if (variableType.isSubclassOf(functionTypeMirror)) {
+                // TODO injection di funzioni
                 print("Inject Function");
 
-                // TODO injection di funzioni
+
                 print("UnimplementedError");
                 throw new UnimplementedError();
 */
@@ -357,27 +386,11 @@ class Registry {
 /*
             } else if (variableType is TypedefMirror &&
                 variableType.isSubtypeOf(providerFunctionTypeMirror)) {
+              // TODO injection di ProviderFunction
               print("Inject ProviderFunction");
 
               print("UnimplementedError");
               throw new UnimplementedError();
-
-
-              if (variableType.typeArguments.length == 1) {
-                var typeMirror = variableType.typeArguments[0];
-
-                if (typeMirror.isSubclassOf(reflectClass(Future))) {
-                  print("Inject ProviderFunction<Future>");
-
-                  if (typeMirror.typeArguments.length == 1) {
-                    typeMirror = typeMirror.typeArguments[0];
-                  } else {
-                    throw new ArgumentError();
-                  }
-                }
-
-                reflect(instance).setField(symbol,
-                    Registry.lookupProviderFunction(typeMirror.reflectedType));
 */
             } else {
               throw new ArgumentError();
@@ -386,7 +399,13 @@ class Registry {
         }
       });
 
-      classMirror = classMirror.superclass;
+      try {
+        classMirror = classMirror.superclass;
+      } on NoSuchCapabilityError catch (e) {
+        _logger.finest("super class of ${classMirror.simpleName} is not reflected", e);
+
+        classMirror = null;
+      }
     }
   }
 
@@ -407,7 +426,7 @@ class Registry {
       _notifyListeners(Injectable.reflect(instance),
           _getInstanceListeners(instance, OnBind), scope);
     } else {
-      LOGGER.warning("$instance not reflected");
+      _logger.finest("$instance not reflected");
     }
   }
 
@@ -418,7 +437,7 @@ class Registry {
           new List.from(_getInstanceListeners(instance, OnUnbinding).reversed),
           scope);
     } else {
-      LOGGER.warning("$instance not reflected");
+      _logger.finest("$instance not reflected");
       return new Future.value();
     }
   }
@@ -444,7 +463,7 @@ class Registry {
   static Map<Type, _BindingListeners> _getScopeListeners(
       Scope scope, bindType) {
     var listeners = {};
-    _MODULE._bindings.forEach((clazz, binding) {
+    _MODULE?._bindings?.forEach((clazz, binding) {
       if (binding.scope == scope) {
         _getInstanceListeners(binding.provider, bindType).forEach((symbol) {
           _BindingListeners bindingListeners = listeners[clazz];
@@ -489,7 +508,15 @@ class Registry {
         }
       });
 
-      classMirror = classMirror.superclass;
+      try {
+        classMirror = classMirror.superclass;
+
+        _logger.finest("super class ${classMirror.simpleName}");
+      } on NoSuchCapabilityError catch (e) {
+        _logger.finest("super class of ${classMirror.simpleName} is not reflected", e);
+
+        classMirror = null;
+      }
     }
     return listeners;
   }
@@ -541,9 +568,6 @@ class Registry {
   }
 }
 
-_newInstanceFromClass(Type clazz) =>
-    (Injectable.reflectType(clazz) as ClassMirror).newInstance("", []);
-
 class _ScopeContext {
   final Scope _scope;
 
@@ -556,44 +580,50 @@ class _ScopeContext {
   Map<Provider, dynamic> get bindings => _bindings;
 }
 
-class _Injectable extends Reflectable {
-  const _Injectable()
+class Module_ extends Reflectable {
+  const Module_()
+      : super(
+            newInstanceCapability
+        );
+}
+
+class Injectable_ extends Reflectable {
+  const Injectable_()
       : super(
             metadataCapability,
             typeRelationsCapability,
             declarationsCapability,
-            invokingCapability,
-            subtypeQuantifyCapability,
-            superclassQuantifyCapability,
-            typeAnnotationQuantifyCapability);
+            instanceInvokeCapability,
+            newInstanceCapability
+        );
 }
 
-class _Inject {
-  const _Inject();
+class Inject_ {
+  const Inject_();
 }
 
-class _OnScopeOpened {
-  const _OnScopeOpened();
+class OnScopeOpened_ {
+  const OnScopeOpened_();
 }
 
-class _OnScopeClosing {
-  const _OnScopeClosing();
+class OnScopeClosing_ {
+  const OnScopeClosing_();
 }
 
-class _OnBind {
-  const _OnBind();
+class OnBind_ {
+  const OnBind_();
 }
 
-class _OnUnbinding {
-  const _OnUnbinding();
+class OnUnbinding_ {
+  const OnUnbinding_();
 }
 
-class _OnProvidedBind {
-  const _OnProvidedBind();
+class OnProvidedBind_ {
+  const OnProvidedBind_();
 }
 
-class _OnProvidedUnbinding {
-  const _OnProvidedUnbinding();
+class OnProvidedUnbinding_ {
+  const OnProvidedUnbinding_();
 }
 
 @Injectable
@@ -611,7 +641,8 @@ class ToClassProvider<T> extends Provider<T> {
 
   ToClassProvider(this._clazz);
 
-  T get() => _newInstanceFromClass(this._clazz);
+  T get() =>
+      (Injectable.reflectType(_clazz) as ClassMirror).newInstance("", []);
 }
 
 @Injectable

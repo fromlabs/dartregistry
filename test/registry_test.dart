@@ -1,4 +1,4 @@
-@GlobalQuantifyCapability(r"^dart.core.DateTime$", Injectable)
+@GlobalQuantifyCapability(r"^dart.core.(String|DateTime)$", Injectable)
 import 'package:reflectable/reflectable.dart';
 
 import "package:dartregistry/dart_registry.dart";
@@ -6,63 +6,34 @@ import "package:dartregistry/dart_registry.dart";
 import "dart:async";
 
 import "package:logging/logging.dart";
+import "package:stack_trace/stack_trace.dart";
 
+final _logger = Logger.root;
+
+@Module
 class TestModule extends RegistryModule {
   static const SCOPE = const Scope("NUOVO");
 
   @override
   Future configure(Map<String, dynamic> parameters) =>
       super.configure(parameters).then((_) {
+        _logger.info("Configure");
+
         bindClass(LogService, Scope.ISOLATE);
         bindClass(MyService, Scope.ISOLATE, MyServiceImpl);
         bindClass(InjectService, SCOPE, InjectServiceImpl);
         bindProvider(String, Scope.ISOLATE, new StringProvider("ECCOLO"));
         bindProvider(DateTime, Scope.ISOLATE, new DateProvider());
-
-        // bindClass(InjectService2, SCOPE, InjectService2Impl);
-        // bindProviderFunction(InjectService2, Scope.ISOLATE, () => new InjectService2Impl());
       });
 }
 
-Future test() {
-  Logger.root.level = Level.ALL;
-  Logger.root.onRecord.listen((LogRecord logRecord) {
-    print('${logRecord.level.name}: ${logRecord.time}: ${logRecord.message}');
-    if (logRecord.stackTrace != null) {
-      print(logRecord.error);
-      print(logRecord.stackTrace);
-    }
-  });
+test() async {
+  _logger.info("Test");
 
-  print("Test");
+  var logService = Registry.lookupObject(LogService) as LogService;
+  logService.info("Ciao a tutti");
 
   MyService service = Registry.lookupObject(MyService);
-
-  Injectable.reflect(new DateProvider());
-
-
-  //
-  print(Injectable.annotatedClasses.length);
-
-  for (var i = 0; i < Injectable.annotatedClasses.length; i++) {
-    try {
-      var mirror = Injectable.annotatedClasses.elementAt(i);
-
-      print(mirror.qualifiedName);
-    } on NoSuchCapabilityError catch(e) {
-    }
-  }
-
-  print(Injectable.annotatedClasses.where((mirror) => mirror.hasReflectedType));
-
-/*
-  print(Injectable.libraries.length);
-  for(LibraryMirror library in Injectable.libraries) {
-    for(DeclarationMirror declaration in library.declarations) {
-      print(declaration);
-    }
-  }
-*/
 
   return service.echo("Eccomi").then((msg) => print("Echo: $msg"));
 }
@@ -82,106 +53,115 @@ abstract class Loggable {
 @Injectable
 class LogService {
   void info(String msg) {
-    print(msg);
+    _logger.info(msg);
   }
 }
 
+@Injectable
 class InjectServiceImpl implements InjectService {
   @OnScopeOpened
-  init() {
-    print("*** init ***");
-    return new Future.delayed(new Duration(seconds: 1))
-        .then((_) => print("*** init ok ***"));
+  init() async {
+    _logger.info("*** init InjectServiceImpl ***");
+
+    await new Future.delayed(new Duration(seconds: 1));
+
+    _logger.info("*** init InjectServiceImpl ok ***");
   }
 
   @OnScopeClosing
-  deinit() {
-    print("*** deinit ***");
-    return new Future.delayed(new Duration(seconds: 1))
-        .then((_) => print("*** deinit ok ***"));
+  deinit() async {
+    _logger.info("*** deinit InjectServiceImpl ***");
+
+    await new Future.delayed(new Duration(seconds: 1));
+
+    _logger.info("*** deinit InjectServiceImpl ok ***");
   }
 
   String echo(String msg) => msg;
 }
-
-class InjectService2Impl implements InjectService2 {}
 
 @Injectable
 abstract class InjectService {
   String echo(String msg);
 }
 
-abstract class InjectService2 {}
-
 @Injectable
 class DateProvider extends Provider<Future<DateTime>> {
   @override
-  Future<DateTime> get() => new Future.value(new DateTime.now());
+  Future<DateTime> get() async => new DateTime.now();
 
   @OnBind
   void postBind1() {
-    print("DateProvider postBind");
+    _logger.info("DateProvider postBind");
   }
 
   @OnUnbinding
   void preUnbind1() {
-    print("DateProvider preUnbind");
+    _logger.info("DateProvider preUnbind");
   }
 
   @OnProvidedBind
   void postProvidedBind(Future future) {
-    print("DateProvider postProvidedBind");
-    future.then((date) => print("DateProvider postProvidedBind finish: $date"));
+    _logger.info("DateProvider postProvidedBind");
+
+    future.then(
+        (date) => _logger.info("DateProvider postProvidedBind finish: $date"));
   }
 
   @OnProvidedUnbinding
   void preProvidedUnbind(Future future) {
-    print("DateProvider preProvidedUnbind");
-    future
-        .then((date) => print("DateProvider preProvidedUnbind finish: $date"));
+    _logger.info("DateProvider preProvidedUnbind");
+
+    future.then(
+        (date) => _logger.info("DateProvider preProvidedUnbind finish: $date"));
   }
 }
 
 @Injectable
 class StringProvider extends Provider<String> {
   final String msg;
+
   StringProvider(this.msg);
 
   @override
   String get() => msg;
 
   @OnScopeOpened
-  init() {
-    print("*** init 2 ***");
-    return new Future.delayed(new Duration(seconds: 1))
-        .then((_) => print("*** init 2 ok ***"));
+  init() async {
+    _logger.info("*** init StringProvider ***");
+
+    await new Future.delayed(new Duration(seconds: 1));
+
+    _logger.info("*** init StringProvider ok ***");
   }
 
   @OnScopeClosing
-  deinit() {
-    print("*** deinit 2 ***");
-    return new Future.delayed(new Duration(seconds: 1))
-        .then((_) => print("*** deinit 2 ok ***"));
+  deinit() async {
+    _logger.info("*** deinit StringProvider ***");
+
+    await new Future.delayed(new Duration(seconds: 1));
+
+    _logger.info("*** deinit StringProvider ok ***");
   }
 
   @OnBind
   void postBind() {
-    print("StringProvider postBind");
+    _logger.info("StringProvider postBind");
   }
 
   @OnUnbinding
   void preUnbind() {
-    print("StringProvider preUnbind");
+    _logger.info("StringProvider preUnbind");
   }
 
   @OnProvidedBind
   void postProvidedBind(instance) {
-    print("StringProvider postProvidedBind: $instance");
+    _logger.info("StringProvider postProvidedBind: $instance");
   }
 
   @OnProvidedUnbinding
   void preProvidedUnbind(instance) {
-    print("StringProvider preProvidedUnbind: $instance");
+    _logger.info("StringProvider preProvidedUnbind: $instance");
   }
 }
 
@@ -190,13 +170,18 @@ abstract class MyService {
   Future<String> echo(String msg);
 }
 
+@Injectable
 class MyServiceImpl extends BaseService with Loggable implements MyService {
-  Future<String> echo(String msg) {
+  Future<String> echo(String msg) async {
     info("-> Start");
-    return super
-        .echo(msg)
-        .then((response) => info(response))
-        .whenComplete(() => info("<- End"));
+
+    var response = await super.echo(msg);
+
+    info(response);
+
+    info("<- End");
+
+    return response;
   }
 }
 
@@ -211,40 +196,46 @@ abstract class BaseService {
   @Inject
   Provider<InjectService> injectServiceProvider;
 
-  // TODO provide
-  // @Inject
-  // ProviderFunction<InjectService> provideInjectService;
-
   InjectService get injectService => injectServiceProvider.get();
 
   @OnBind
-  void postBind() => print("postBind");
+  void postBind() => _logger.info("postBind");
 
   @OnUnbinding
-  void preUnbind() => print("preUnbind");
+  void preUnbind() => _logger.info("preUnbind");
 
-  Future<String> echo(String msg) {
-    // print(provideInjectService);
+  Future<String> echo(String msg) async {
+    var date = await dateProvider.get();
 
-    // print("****************** ${provideInjectService()}");
-
-    return dateProvider.get().then((date) => stringProvider.get() +
-        ":" +
-        injectService.echo(msg) +
-        "@" +
-        date.toString());
+    return "${stringProvider.get()}:${injectService.echo(msg)}@$date";
   }
 
   String asyncEcho(String msg) => injectService.echo(msg);
 }
 
-main() {
-  print("Inizio");
-  Registry
-      .load(TestModule)
-      .then((_) => Registry.openScope(Scope.ISOLATE))
-      .then((_) => Registry.runInScope(TestModule.SCOPE, () => test()))
-      .whenComplete(() => Registry.closeScope(Scope.ISOLATE))
-      .whenComplete(() => Registry.unload())
-      .whenComplete(() => print("Fine"));
+main() async {
+  Logger.root.level = Level.ALL;
+  Logger.root.onRecord.listen((LogRecord logRecord) {
+    print('${logRecord.level.name}: ${logRecord.time}: ${logRecord.message}');
+    if (logRecord.error != null) {
+      print(logRecord.error);
+    }
+    if (logRecord.stackTrace != null) {
+      print(Trace.format(logRecord.stackTrace));
+    }
+  });
+
+  _logger.info("Inizio");
+
+  await Registry.load(TestModule);
+
+  await Registry.openScope(Scope.ISOLATE);
+
+  await Registry.runInScope(TestModule.SCOPE, () => test());
+
+  await Registry.closeScope(Scope.ISOLATE);
+
+  await Registry.unload();
+
+  _logger.info("Fine");
 }
