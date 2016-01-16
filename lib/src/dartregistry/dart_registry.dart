@@ -456,8 +456,12 @@ class Registry {
               _getInstanceListeners(provider, OnProvidedUnbinding).reversed),
           scope);
 
-  static List<String> _getInstanceListeners(instance, bindType) =>
-      _getTypeListeners(instance.runtimeType, bindType);
+  static List<String> _getInstanceListeners(instance, bindType) {
+
+    // TODO eliminare utilizzo di runtimeType
+
+    return _getTypeListeners(instance.runtimeType, bindType);
+  }
 
   static Map<Type, _BindingListeners> _getScopeListeners(
       Scope scope, bindType) {
@@ -475,6 +479,7 @@ class Registry {
 
         var target;
         if (binding.provider is ToInstanceProvider) {
+          // TODO eliminare utilizzo di runtimeType
           target = binding.provider._instance.runtimeType;
         } else if (binding.provider is ToClassProvider) {
           target = binding.provider._clazz;
