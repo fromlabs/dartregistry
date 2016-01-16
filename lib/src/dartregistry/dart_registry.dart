@@ -83,7 +83,7 @@ typedef T ProvideFunction<T>();
 
 typedef ScopeRunnable();
 
-void logReflector(Reflectable reflector) {
+void _logReflector(Reflectable reflector) {
   _libraryLogger.finest("******************************");
   _libraryLogger.fine(
       "Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
@@ -97,6 +97,29 @@ void logReflector(Reflectable reflector) {
     }
   }
   _libraryLogger.finest("******************************");
+}
+
+lookupMetadataOfType(List metadata, Type type) {
+  if (injectable.canReflectType(type)) {
+    var typeMirror = injectable.reflectType(type);
+    var list = metadata.where((annotation) {
+      if (injectable.canReflect(annotation)) {
+        var annotationMirror = injectable.reflect(annotation);
+        var annotationTypeMirror = annotationMirror.type;
+
+        // TODO per semplicità vado puntuale sui nodi (c'erano problemi con reflectable in dart2js)
+        return annotationTypeMirror.qualifiedName == typeMirror.qualifiedName;
+      } else {
+        return false;
+      }
+    }).toList(growable: false);
+
+    return list.isNotEmpty ? list.single : null;
+  } else {
+    _libraryLogger.finest("Annotation $type is not reflected");
+
+    return null;
+  }
 }
 
 @injectable
@@ -177,7 +200,7 @@ class Registry {
       [Map<String, dynamic> parameters = const {}]) async {
     _libraryLogger.finest("Load registry module");
 
-    logReflector(injectable);
+    _logReflector(injectable);
 
     var module = (injectionModule.reflectType(moduleClazz) as ClassMirror)
         .newInstance("", []);
@@ -395,7 +418,7 @@ class Registry {
       classMirror.declarations.forEach((name, DeclarationMirror mirror) {
         if (mirror is VariableMirror) {
           Inject injectInstance =
-              _lookupMetadataOfType(mirror.metadata, Inject);
+              lookupMetadataOfType(mirror.metadata, Inject);
           if (injectInstance != null) {
             var boundType = injectInstance.type;
 
@@ -566,7 +589,7 @@ class Registry {
       while (classMirror != null) {
         classMirror.declarations.forEach((symbol, DeclarationMirror mirror) {
           if (mirror is MethodMirror) {
-            var bindInstance = _lookupMetadataOfType(mirror.metadata, bindType);
+            var bindInstance = lookupMetadataOfType(mirror.metadata, bindType);
             if (bindInstance != null) {
               listeners.add(symbol);
             }
@@ -685,29 +708,6 @@ class Registry {
   // TODO per semplicità vado puntuale sui nodi (c'erano problemi con reflectable in dart2js)
   static bool _isGenericTypeOf(TypeMirror typeMirror, String genericType) =>
       typeMirror.qualifiedName == genericType;
-
-  static _lookupMetadataOfType(List metadata, Type type) {
-    if (injectable.canReflectType(type)) {
-      var typeMirror = injectable.reflectType(type);
-      var list = metadata.where((annotation) {
-        if (injectable.canReflect(annotation)) {
-          var annotationMirror = injectable.reflect(annotation);
-          var annotationTypeMirror = annotationMirror.type;
-
-          // TODO per semplicità vado puntuale sui nodi (c'erano problemi con reflectable in dart2js)
-          return annotationTypeMirror.qualifiedName == typeMirror.qualifiedName;
-        } else {
-          return false;
-        }
-      }).toList(growable: false);
-
-      return list.isNotEmpty ? list.single : null;
-    } else {
-      _libraryLogger.finest("Annotation $type is not reflected");
-
-      return null;
-    }
-  }
 }
 
 class _ScopeContext {
