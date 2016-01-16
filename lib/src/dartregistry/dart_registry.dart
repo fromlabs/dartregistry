@@ -36,13 +36,14 @@ abstract class Provider<T> {
 
 void logCapabilities(Reflectable reflector) {
   _logger.finest("******************************");
-  _logger.fine("Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
+  _logger.fine(
+      "Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
   for (var i = 0; i < reflector.annotatedClasses.length; i++) {
     try {
       var mirror = reflector.annotatedClasses.elementAt(i);
 
       _logger.finest(mirror.qualifiedName);
-    } on NoSuchCapabilityError catch(e) {
+    } on NoSuchCapabilityError catch (e) {
       _logger.warning("Skip class", e);
     }
   }
@@ -78,8 +79,6 @@ abstract class RegistryModule {
         new _ProviderBinding(clazz, scope, new ToClassProvider(clazzImpl)));
   }
 
-  // TODO supportare ProviderFunction
-/*
   void bindProviderFunction(
       Type clazz, Scope scope, ProviderFunction providerFunction) {
     _addProviderBinding(
@@ -87,7 +86,6 @@ abstract class RegistryModule {
         new _ProviderBinding(
             clazz, scope, new ToFunctionProvider(providerFunction)));
   }
-*/
 
   void bindProvider(Type clazz, Scope scope, Provider provider) {
     _addProviderBinding(clazz, new _ProviderBinding(clazz, scope, provider));
@@ -402,7 +400,8 @@ class Registry {
       try {
         classMirror = classMirror.superclass;
       } on NoSuchCapabilityError catch (e) {
-        _logger.finest("super class of ${classMirror.simpleName} is not reflected", e);
+        _logger.finest(
+            "super class of ${classMirror.simpleName} is not reflected", e);
 
         classMirror = null;
       }
@@ -513,7 +512,8 @@ class Registry {
 
         _logger.finest("super class ${classMirror.simpleName}");
       } on NoSuchCapabilityError catch (e) {
-        _logger.finest("super class of ${classMirror.simpleName} is not reflected", e);
+        _logger.finest(
+            "super class of ${classMirror.simpleName} is not reflected", e);
 
         classMirror = null;
       }
@@ -581,10 +581,7 @@ class _ScopeContext {
 }
 
 class Module_ extends Reflectable {
-  const Module_()
-      : super(
-            newInstanceCapability
-        );
+  const Module_() : super(newInstanceCapability);
 }
 
 class Injectable_ extends Reflectable {
@@ -594,8 +591,7 @@ class Injectable_ extends Reflectable {
             typeRelationsCapability,
             declarationsCapability,
             instanceInvokeCapability,
-            newInstanceCapability
-        );
+            newInstanceCapability);
 }
 
 class Inject_ {
