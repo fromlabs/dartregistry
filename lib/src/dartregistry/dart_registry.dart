@@ -29,12 +29,7 @@ typedef T ProviderFunction<T>();
 
 typedef ScopeRunnable();
 
-@Injectable
-abstract class Provider<T> {
-  T get();
-}
-
-void logCapabilities(Reflectable reflector) {
+void logReflector(Reflectable reflector) {
   _logger.finest("******************************");
   _logger.fine(
       "Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
@@ -50,20 +45,32 @@ void logCapabilities(Reflectable reflector) {
   _logger.finest("******************************");
 }
 
+@Injectable
+abstract class Provider<T> {
+  T get();
+}
+
+class Scope {
+  static const Scope NONE = const Scope("NONE");
+  static const Scope ISOLATE = const Scope("ISOLATE");
+
+  final String id;
+
+  const Scope(this.id);
+
+  String toString() => this.id;
+}
+
 abstract class RegistryModule {
   Map<Type, _ProviderBinding> _bindings;
 
-  Future configure(Map<String, dynamic> parameters) {
+  Future configure(Map<String, dynamic> parameters) async {
     _bindings = {};
-
-    return new Future.value();
   }
 
-  Future unconfigure() {
+  Future unconfigure() async {
     _bindings.clear();
     _bindings = null;
-
-    return new Future.value();
   }
 
   void bindInstance(Type clazz, instance) {
@@ -99,18 +106,7 @@ abstract class RegistryModule {
 
   void onBindingAdded(Type clazz) {}
 
-  _getProviderBinding(Type clazz) => _bindings[clazz];
-}
-
-class Scope {
-  static const Scope NONE = const Scope("NONE");
-  static const Scope ISOLATE = const Scope("ISOLATE");
-
-  final String id;
-
-  const Scope(this.id);
-
-  String toString() => this.id;
+  _ProviderBinding _getProviderBinding(Type clazz) => _bindings[clazz];
 }
 
 class Registry {
@@ -123,34 +119,39 @@ class Registry {
   static Map<Type, ProviderFunction> _SCOPED_PROVIDERS_CACHE;
 
   static Future load(Type moduleClazz,
-      [Map<String, dynamic> parameters = const {}]) {
+      [Map<String, dynamic> parameters = const {}]) async {
     _logger.finest("Load registry module");
 
-    logCapabilities(Injectable);
+    logReflector(Injectable);
 
     var module =
         (Module.reflectType(moduleClazz) as ClassMirror).newInstance("", []);
+
     if (module is! RegistryModule) {
       throw new ArgumentError("$moduleClazz is not a registry module");
     }
+
     _MODULE = module;
 
     _SCOPED_PROVIDERS_CACHE = {};
-    return _MODULE.configure(parameters).then((_) {
-      _injectProviders();
-    });
+
+    await _MODULE.configure(parameters);
+
+    _injectProviders();
   }
 
-  static Future unload() {
+  static Future unload() async {
     _logger.finest("Unload module");
 
-    return _MODULE.unconfigure().then((_) {
+    try {
+      await _MODULE.unconfigure();
+    } finally {
       _MODULE = null;
       _SCOPED_PROVIDERS_CACHE = null;
-    });
+    }
   }
 
-  static Future openScope(Scope scope) {
+  static Future openScope(Scope scope) async {
     _logger.finest("Open scope $scope");
 
     if (scope == Scope.NONE) {
@@ -175,13 +176,14 @@ class Registry {
       _ISOLATE_SCOPE_CONTEXT = scopeContext;
     }
 
-    return _notifyPostOpenedListeners(scope).then((_) => scopeContext);
+    await _notifyPostOpenedListeners(scope);
   }
 
-  static Future closeScope(Scope scope) {
+  static Future closeScope(Scope scope) async {
     _logger.finest("Close scope ${scope}");
 
     _ScopeContext scopeContext;
+
     _ScopeContextHolder holder = Zone.current[_SCOPE_CONTEXT_HOLDER];
     if (holder != null && holder.isHolding) {
       scopeContext = holder.held;
@@ -194,19 +196,22 @@ class Registry {
     }
 
     Map<Provider, dynamic> providers = scopeContext.bindings;
-    return Future.forEach(providers.keys, (provider) {
+
+    await Future.forEach(providers.keys, (provider) async {
       var instance = providers[provider];
-      return _notifyPreUnbindListeners(instance, scope)
-          .then((_) =>
-              _notifyPreProvidedUnbindListeners(provider, instance, scope))
-          .then((_) => _notifyPreUnbindListeners(provider, scope));
-    }).then((_) => _notifyPreClosingListeners(scopeContext._scope)).then((_) {
-      if (holder != null && holder.isHolding) {
-        holder.unhold();
-      } else {
-        _ISOLATE_SCOPE_CONTEXT = null;
-      }
+
+      await _notifyPreUnbindListeners(instance, scope);
+      await _notifyPreProvidedUnbindListeners(provider, instance, scope);
+      await _notifyPreUnbindListeners(provider, scope);
     });
+
+    await _notifyPreClosingListeners(scopeContext._scope);
+
+    if (holder != null && holder.isHolding) {
+      holder.unhold();
+    } else {
+      _ISOLATE_SCOPE_CONTEXT = null;
+    }
   }
 
   static _ScopeContext _getScopeContext(Scope scope) {
@@ -222,17 +227,15 @@ class Registry {
     }
   }
 
-  static runInScope(Scope scope, ScopeRunnable runnable) {
-    return runZoned(() {
-      return Chain.capture(() {
-        return openScope(scope)
-            .then((_) => runnable())
-            .whenComplete(() => closeScope(scope));
-      }, onError: (error, Chain chain) {
-        _logger.severe("Running in scope error", error, chain);
-      });
-    }, zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
-  }
+  static runInScope(Scope scope, ScopeRunnable runnable) => runZoned(
+      () => Chain.capture(() async {
+            await openScope(scope);
+            await runnable();
+            await closeScope(scope);
+          }, onError: (error, Chain chain) {
+            _logger.severe("Running in scope error", error, chain);
+          }),
+      zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
 
   static lookupObject(Type clazz) {
     ProviderFunction provider = lookupProviderFunction(clazz);
@@ -315,8 +318,9 @@ class Registry {
   }
 
   static void _injectProviders() {
-    _MODULE._bindings.values.forEach(
-        (providerBinding) => _injectBindings(providerBinding.provider));
+    for (var providerBinding in _MODULE._bindings.values) {
+      _injectBindings(providerBinding.provider);
+    }
   }
 
   static void _injectBindings(instance) {
@@ -335,7 +339,7 @@ class Registry {
       classMirror.declarations.forEach((name, DeclarationMirror mirror) {
         if (mirror is VariableMirror) {
           if (mirror.metadata.contains(Inject)) {
-            _logger.finest("Inject on variable ${mirror.simpleName}");
+            _logger.finest("Inject on variable $name");
 
             var variableType = mirror.type;
             if (variableType is ClassMirror) {
@@ -346,9 +350,15 @@ class Registry {
                   if (typeMirror.isSubclassOf(Injectable.reflectType(Future))) {
                     if (typeMirror.typeArguments.length == 1) {
                       typeMirror = typeMirror.typeArguments[0];
+
+                      _logger.finest(
+                          "Injecting Provider<Future<${typeMirror.simpleName}>>");
                     } else {
                       throw new ArgumentError();
                     }
+                  } else {
+                    _logger
+                        .finest("Injecting Provider<${typeMirror.simpleName}>");
                   }
 
                   instanceMirror.invokeSetter(
@@ -371,9 +381,14 @@ class Registry {
                 if (typeMirror.isSubclassOf(Injectable.reflectType(Future))) {
                   if (typeMirror.typeArguments.length == 1) {
                     typeMirror = typeMirror.typeArguments[0];
+
+                    _logger
+                        .finest("Injecting Future<${typeMirror.simpleName}>");
                   } else {
                     throw new ArgumentError();
                   }
+                } else {
+                  _logger.finest("Injecting ${typeMirror.simpleName}");
                 }
 
                 instanceMirror.invokeSetter(
@@ -457,7 +472,6 @@ class Registry {
           scope);
 
   static List<String> _getInstanceListeners(instance, bindType) {
-
     // TODO eliminare utilizzo di runtimeType
 
     return _getTypeListeners(instance.runtimeType, bindType);
@@ -500,7 +514,7 @@ class Registry {
     return listeners;
   }
 
-  static List<String> _getTypeListeners(type, bindType) {
+  static List<String> _getTypeListeners(Type type, bindType) {
     var listeners = [];
     var classMirror = Injectable.reflectType(type);
     while (classMirror != null) {
