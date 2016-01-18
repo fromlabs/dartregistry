@@ -8,20 +8,15 @@ import "package:stack_trace/stack_trace.dart";
 @GlobalQuantifyCapability(r"^dart.async.Future$", injectable)
 import 'package:reflectable/reflectable.dart';
 
-final Logger _libraryLogger = new Logger("dartregistry");
+final Logger _libraryLogger = new Logger("dartregistry.dartregistry");
 
 const String _FUTURE_TYPE_NAME = "dart.async.Future";
 const String _PROVIDER_TYPE_NAME = "dartregistry.dartregistry.Provider";
 const String _FUNCTION_PROVIDER_TYPE_NAME =
     "dartregistry.dartregistry.ProvideFunction";
 
-const InjectionModule injectionModule = const InjectionModule();
 const Injectable injectable = const Injectable();
 const Inject inject = const Inject();
-
-class InjectionModule extends Reflectable {
-  const InjectionModule() : super(newInstanceCapability);
-}
 
 class Injectable extends Reflectable {
   const Injectable()
@@ -99,11 +94,95 @@ class Scope {
   String toString() => this.id;
 }
 
-@injectionModule
-abstract class RegistryModule {
+@injectable
+abstract class Loggable {
+  Logger _logger;
+
+  Logger get logger {
+    if (_logger == null) {
+      _logger = createLogger() ?? Logger.root;
+    }
+    return _logger;
+  }
+
+  Logger createLogger() {
+    var type = Registry._getInstanceType(this);
+    return type != null ? new Logger(Registry.getQualifiedName(type)) : null;
+  }
+
+  bool isLoggable(Level value) => logger.isLoggable(value);
+
+  void shout(message, [Object error, StackTrace stackTrace]) =>
+      logger.shout(message, error, stackTrace);
+
+  void severe(message, [Object error, StackTrace stackTrace]) =>
+      logger.severe(message, error, stackTrace);
+
+  void warning(message, [Object error, StackTrace stackTrace]) =>
+      logger.warning(message, error, stackTrace);
+
+  void info(message, [Object error, StackTrace stackTrace]) =>
+      logger.info(message, error, stackTrace);
+
+  void config(message, [Object error, StackTrace stackTrace]) =>
+      logger.config(message, error, stackTrace);
+
+  void fine(message, [Object error, StackTrace stackTrace]) =>
+      logger.fine(message, error, stackTrace);
+
+  void finer(message, [Object error, StackTrace stackTrace]) =>
+      logger.finer(message, error, stackTrace);
+
+  void finest(message, [Object error, StackTrace stackTrace]) =>
+      logger.finest(message, error, stackTrace);
+}
+
+class LogPrintHandler {
+  void call(LogRecord logRecord) {
+    print('[${logRecord.level.name}: ${logRecord.loggerName}] ${logRecord.time}: ${logRecord.message}');
+    if (logRecord.error != null) {
+      print(logRecord.error);
+    }
+    if (logRecord.stackTrace != null) {
+      print(Trace.format(logRecord.stackTrace));
+    }
+  }
+}
+
+class BufferedLogHandler {
+  Level printLevel;
+  StringBuffer _buffer;
+
+  BufferedLogHandler(this._buffer, this.printLevel);
+
+  void call(LogRecord logRecord) {
+    var alsoPrint = logRecord.level >= this.printLevel;
+
+    _append('${logRecord.level.name}: ${logRecord.time}: ${logRecord.message}',
+        alsoPrint: alsoPrint);
+    if (logRecord.error != null) {
+      _append(logRecord.error, alsoPrint: alsoPrint);
+    }
+    if (logRecord.stackTrace != null) {
+      _append(Trace.format(logRecord.stackTrace), alsoPrint: alsoPrint);
+    }
+  }
+
+  void _append(msg, {alsoPrint: true}) {
+    if (alsoPrint) {
+      print(msg);
+    }
+    _buffer.writeln(msg);
+  }
+}
+
+@injectable
+abstract class RegistryModule extends Loggable {
   Map<Type, _ProviderBinding> _bindings;
 
   Future configure(Map<String, dynamic> parameters) async {
+    info("################");
+
     _bindings = {};
   }
 
@@ -151,6 +230,8 @@ abstract class RegistryModule {
 class Registry {
   static const _SCOPE_CONTEXT_HOLDER = "_SCOPE_CONTEXT_HOLDER";
 
+  static Logger _logger = new Logger("${_libraryLogger.fullName}.Registry");
+
   static RegistryModule _MODULE;
 
   static _ScopeContext _ISOLATE_SCOPE_CONTEXT;
@@ -174,12 +255,12 @@ class Registry {
 
   static Future load(Type moduleClazz,
       [Map<String, dynamic> parameters = const {}]) async {
-    _libraryLogger.finest("Load registry module");
+    _logger.finest("Load registry module");
 
     _logReflector(injectable);
 
-    var module = (injectionModule.reflectType(moduleClazz) as ClassMirror)
-        .newInstance("", []);
+    var module =
+        (_getTypeMirror(moduleClazz) as ClassMirror).newInstance("", []);
 
     if (module is! RegistryModule) {
       throw new ArgumentError("$moduleClazz is not a registry module");
@@ -195,7 +276,7 @@ class Registry {
   }
 
   static Future unload() async {
-    _libraryLogger.finest("Unload module");
+    _logger.finest("Unload module");
 
     try {
       await _MODULE.unconfigure();
@@ -206,7 +287,7 @@ class Registry {
   }
 
   static Future openScope(Scope scope) async {
-    _libraryLogger.finest("Open scope $scope");
+    _logger.finest("Open scope $scope");
 
     if (scope == Scope.NONE) {
       throw new ArgumentError("Can't open scope context ${Scope.NONE}");
@@ -234,7 +315,7 @@ class Registry {
   }
 
   static Future closeScope(Scope scope) async {
-    _libraryLogger.finest("Close scope ${scope}");
+    _logger.finest("Close scope ${scope}");
 
     _ScopeContext scopeContext;
 
@@ -276,7 +357,7 @@ class Registry {
 
             return result;
           }, onError: (error, Chain chain) {
-            _libraryLogger.severe("Running in scope error", error, chain);
+            _logger.severe("Running in scope error", error, chain);
           }),
       zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
 
@@ -314,7 +395,7 @@ class Registry {
             if (scopeContext != null) {
               return _provideInScope(providerBinding.provider, scopeContext);
             } else {
-              _libraryLogger.warning(
+              _logger.warning(
                   "Scope context not found for provider binding: $clazz");
 
               return null;
@@ -350,7 +431,13 @@ class Registry {
   static String getSimpleName(Type clazz) {
     var mirror = _getTypeMirror(clazz);
 
-    return mirror.simpleName;
+    return mirror?.simpleName;
+  }
+
+  static String getQualifiedName(Type clazz) {
+    var mirror = _getTypeMirror(clazz);
+
+    return mirror?.qualifiedName;
   }
 
   static bool isTypeAnnotatedWith(Type clazz, Type annotationType) {
@@ -421,7 +508,7 @@ class Registry {
     if (typeDeclarations.containsKey(annotationType)) {
       declarations = typeDeclarations[annotationType];
     } else {
-      _libraryLogger.finest("Get $annotationType declarations on class $clazz");
+      _logger.finest("Get $annotationType declarations on class $clazz");
 
       declarations = [];
       var classMirrors = _getClassMirrorHierarchy(clazz);
@@ -481,7 +568,7 @@ class Registry {
   }
 
   static void _injectBindings(instance) {
-    _libraryLogger.finest("Inject bindings on $instance");
+    _logger.finest("Inject bindings on $instance");
 
     var instanceMirror = _getInstanceMirror(instance);
 
@@ -498,16 +585,16 @@ class Registry {
         var name = declaration.simpleName;
         var boundType = injectInstance.type;
 
-        _libraryLogger.finest(
+        _logger.finest(
             "Inject on variable $name bound to ${boundType ?? "unspecified"}");
 
         var variabileTypeMirror = declaration.type;
 
         if (_isGenericTypeOf(variabileTypeMirror, _PROVIDER_TYPE_NAME)) {
-          _libraryLogger.finest("Provider injection");
+          _logger.finest("Provider injection");
 
           if (boundType != null) {
-            _libraryLogger.finest("Injecting $boundType");
+            _logger.finest("Injecting $boundType");
 
             instanceMirror.invokeSetter(
                 name, Registry.lookupProvider(boundType));
@@ -515,10 +602,10 @@ class Registry {
             throw new ArgumentError();
           }
         } else if (_isGenericTypeOf(variabileTypeMirror, _FUTURE_TYPE_NAME)) {
-          _libraryLogger.finest("Future injection");
+          _logger.finest("Future injection");
 
           if (boundType != null) {
-            _libraryLogger.finest("Injecting $boundType");
+            _logger.finest("Injecting $boundType");
 
             instanceMirror.invokeSetter(name, Registry.lookupObject(boundType));
           } else {
@@ -526,10 +613,10 @@ class Registry {
           }
         } else if (_isGenericTypeOf(
             variabileTypeMirror, _FUNCTION_PROVIDER_TYPE_NAME)) {
-          _libraryLogger.finest("Provide function injection");
+          _logger.finest("Provide function injection");
 
           if (boundType != null) {
-            _libraryLogger.finest("Injecting $boundType");
+            _logger.finest("Injecting $boundType");
 
             // TODO verificare quando dart2js offrirà il supporto ai typedef con generici
             throw new UnsupportedError("Provide function injection");
@@ -541,7 +628,7 @@ class Registry {
             throw new ArgumentError();
           }
         } else if (variabileTypeMirror is ClassMirror) {
-          _libraryLogger.finest("Injecting ${variabileTypeMirror.simpleName}");
+          _logger.finest("Injecting ${variabileTypeMirror.simpleName}");
 
           instanceMirror.invokeSetter(
               name, Registry.lookupObject(variabileTypeMirror.reflectedType));
@@ -665,7 +752,7 @@ class Registry {
     if (bindListeners.containsKey(bindType)) {
       listeners = bindListeners[bindType];
     } else {
-      _libraryLogger.finest("Get $bindType listeners on scope $scope");
+      _logger.finest("Get $bindType listeners on scope $scope");
 
       listeners = {};
       _MODULE?._bindings?.forEach((clazz, binding) {
@@ -751,7 +838,7 @@ class Registry {
       if (typeMirror.hasReflectedType) {
         type = typeMirror.reflectedType;
       } else {
-        _libraryLogger.finest("Type mirror $typeMirror is not reflected");
+        _logger.finest("Type mirror $typeMirror is not reflected");
         type = null;
       }
       _reflectedTypes[typeMirror] = type;
@@ -763,7 +850,7 @@ class Registry {
     if (injectable.canReflect(instance)) {
       return injectable.reflect(instance);
     } else {
-      _libraryLogger.finest("Instance $instance not reflected");
+      _logger.finest("Instance $instance not reflected");
       return null;
     }
   }
@@ -776,7 +863,7 @@ class Registry {
       if (injectable.canReflectType(type)) {
         typeMirror = injectable.reflectType(type);
       } else {
-        _libraryLogger.finest("Type $type not reflected");
+        _logger.finest("Type $type not reflected");
         typeMirror = null;
       }
       _reflectedTypeMirrors[typeMirror] = typeMirror;
@@ -798,7 +885,7 @@ class Registry {
         try {
           classMirror = classMirror.superclass;
         } on NoSuchCapabilityError catch (e) {
-          _libraryLogger.finest(
+          _logger.finest(
               "Super class of ${classMirror.simpleName} is not reflected", e);
 
           classMirror = null;
@@ -816,19 +903,19 @@ class Registry {
   }
 
   static void _logReflector(Reflectable reflector) {
-    _libraryLogger.finest("******************************");
-    _libraryLogger.fine(
+    _logger.finest("******************************");
+    _logger.fine(
         "Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
     for (var i = 0; i < reflector.annotatedClasses.length; i++) {
       try {
         var mirror = reflector.annotatedClasses.elementAt(i);
 
-        _libraryLogger.finest(mirror.qualifiedName);
+        _logger.finest(mirror.qualifiedName);
       } on NoSuchCapabilityError catch (e) {
-        _libraryLogger.warning("Skip class", e);
+        _logger.warning("Skip class", e);
       }
     }
-    _libraryLogger.finest("******************************");
+    _logger.finest("******************************");
   }
 }
 

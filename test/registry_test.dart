@@ -1,3 +1,5 @@
+library test;
+
 @GlobalQuantifyCapability(r"^dart.core.(String|DateTime)$", injectable)
 import 'package:reflectable/reflectable.dart';
 
@@ -6,18 +8,17 @@ import "package:dartregistry/dart_registry.dart";
 import "dart:async";
 
 import "package:logging/logging.dart";
-import "package:stack_trace/stack_trace.dart";
 
-final _logger = Logger.root;
+final _libraryLogger = new Logger("test");
 
-@injectionModule
+@injectable
 class TestModule extends RegistryModule {
   static const SCOPE = const Scope("NUOVO");
 
   @override
   Future configure(Map<String, dynamic> parameters) =>
       super.configure(parameters).then((_) {
-        _logger.info("Configure");
+        _libraryLogger.info("Configure");
 
         bindClass(LogService, Scope.ISOLATE);
         bindClass(MyService, Scope.ISOLATE, MyServiceImpl);
@@ -28,7 +29,7 @@ class TestModule extends RegistryModule {
 }
 
 test() async {
-  _logger.info("Test");
+  _libraryLogger.info("Test");
 
   var logService = Registry.lookupObject(LogService) as LogService;
   logService.info("Ciao a tutti");
@@ -53,7 +54,7 @@ abstract class Loggable {
 @injectable
 class LogService {
   void info(String msg) {
-    _logger.info(msg);
+    _libraryLogger.info(msg);
   }
 }
 
@@ -61,20 +62,20 @@ class LogService {
 class InjectServiceImpl implements InjectService {
   @onScopeOpened
   init() async {
-    _logger.info("*** init InjectServiceImpl ***");
+    _libraryLogger.info("*** init InjectServiceImpl ***");
 
     await new Future.delayed(new Duration(seconds: 1));
 
-    _logger.info("*** init InjectServiceImpl ok ***");
+    _libraryLogger.info("*** init InjectServiceImpl ok ***");
   }
 
   @onScopeClosing
   deinit() async {
-    _logger.info("*** deinit InjectServiceImpl ***");
+    _libraryLogger.info("*** deinit InjectServiceImpl ***");
 
     await new Future.delayed(new Duration(seconds: 1));
 
-    _logger.info("*** deinit InjectServiceImpl ok ***");
+    _libraryLogger.info("*** deinit InjectServiceImpl ok ***");
   }
 
   String echo(String msg) => msg;
@@ -92,28 +93,28 @@ class DateProvider extends Provider<Future<DateTime>> {
 
   @onBind
   void postBind1() {
-    _logger.info("DateProvider postBind");
+    _libraryLogger.info("DateProvider postBind");
   }
 
   @onUnbinding
   void preUnbind1() {
-    _logger.info("DateProvider preUnbind");
+    _libraryLogger.info("DateProvider preUnbind");
   }
 
   @onProvidedBind
   void postProvidedBind(Future future) {
-    _logger.info("DateProvider postProvidedBind");
+    _libraryLogger.info("DateProvider postProvidedBind");
 
     future.then(
-        (date) => _logger.info("DateProvider postProvidedBind finish: $date"));
+        (date) => _libraryLogger.info("DateProvider postProvidedBind finish: $date"));
   }
 
   @onProvidedUnbinding
   void preProvidedUnbind(Future future) {
-    _logger.info("DateProvider preProvidedUnbind");
+    _libraryLogger.info("DateProvider preProvidedUnbind");
 
     future.then(
-        (date) => _logger.info("DateProvider preProvidedUnbind finish: $date"));
+        (date) => _libraryLogger.info("DateProvider preProvidedUnbind finish: $date"));
   }
 }
 
@@ -128,40 +129,40 @@ class StringProvider extends Provider<String> {
 
   @onScopeOpened
   init() async {
-    _logger.info("*** init StringProvider ***");
+    _libraryLogger.info("*** init StringProvider ***");
 
     await new Future.delayed(new Duration(seconds: 1));
 
-    _logger.info("*** init StringProvider ok ***");
+    _libraryLogger.info("*** init StringProvider ok ***");
   }
 
   @onScopeClosing
   deinit() async {
-    _logger.info("*** deinit StringProvider ***");
+    _libraryLogger.info("*** deinit StringProvider ***");
 
     await new Future.delayed(new Duration(seconds: 1));
 
-    _logger.info("*** deinit StringProvider ok ***");
+    _libraryLogger.info("*** deinit StringProvider ok ***");
   }
 
   @onBind
   void postBind() {
-    _logger.info("StringProvider postBind");
+    _libraryLogger.info("StringProvider postBind");
   }
 
   @onUnbinding
   void preUnbind() {
-    _logger.info("StringProvider preUnbind");
+    _libraryLogger.info("StringProvider preUnbind");
   }
 
   @onProvidedBind
   void postProvidedBind(instance) {
-    _logger.info("StringProvider postProvidedBind: $instance");
+    _libraryLogger.info("StringProvider postProvidedBind: $instance");
   }
 
   @onProvidedUnbinding
   void preProvidedUnbind(instance) {
-    _logger.info("StringProvider preProvidedUnbind: $instance");
+    _libraryLogger.info("StringProvider preProvidedUnbind: $instance");
   }
 }
 
@@ -210,10 +211,10 @@ abstract class BaseService {
   Future<DateTime> dateFuture;
 
   @onBind
-  void postBind() => _logger.info("postBind");
+  void postBind() => _libraryLogger.info("postBind");
 
   @onUnbinding
-  void preUnbind() => _logger.info("preUnbind");
+  void preUnbind() => _libraryLogger.info("preUnbind");
 
   Future<String> echo(String msg) async {
     var date = await dateProvider.get();
@@ -226,17 +227,9 @@ abstract class BaseService {
 
 main() async {
   Logger.root.level = Level.ALL;
-  Logger.root.onRecord.listen((LogRecord logRecord) {
-    print('${logRecord.level.name}: ${logRecord.time}: ${logRecord.message}');
-    if (logRecord.error != null) {
-      print(logRecord.error);
-    }
-    if (logRecord.stackTrace != null) {
-      print(Trace.format(logRecord.stackTrace));
-    }
-  });
+  Logger.root.onRecord.listen(new LogPrintHandler());
 
-  _logger.info("Inizio");
+  _libraryLogger.info("Inizio");
 
   await Registry.load(TestModule);
 
@@ -248,5 +241,5 @@ main() async {
 
   await Registry.unload();
 
-  _logger.info("Fine");
+  _libraryLogger.info("Fine");
 }
