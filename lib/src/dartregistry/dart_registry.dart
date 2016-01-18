@@ -10,7 +10,7 @@ import 'package:reflectable/reflectable.dart';
 
 final Logger _libraryLogger = new Logger("dartregistry");
 
-const String _FUTURE_TYPE_NAME = "dart.core.Future";
+const String _FUTURE_TYPE_NAME = "dart.async.Future";
 const String _PROVIDER_TYPE_NAME = "dartregistry.dartregistry.Provider";
 const String _FUNCTION_PROVIDER_TYPE_NAME =
     "dartregistry.dartregistry.ProvideFunction";
@@ -156,6 +156,21 @@ class Registry {
   static _ScopeContext _ISOLATE_SCOPE_CONTEXT;
 
   static Map<Type, ProvideFunction> _SCOPED_PROVIDERS_CACHE;
+
+  static final Map<TypeMirror, Type> _reflectedTypes = new Map.identity();
+
+  static final Map<Type, TypeMirror> _reflectedTypeMirrors = new Map.identity();
+
+  static final Map<Type, List<ClassMirror>> _reflectedClassMirrorHierarchies =
+      new Map.identity();
+
+  static final Map<Scope,
+          Map<Type, Map<Type, _BindingListeners>>> _scopeListeners =
+      new Map.identity();
+
+  static final Map<Type,
+          Map<Type, List<DeclarationMirror>>> _allAnnotatedDeclarations =
+      new Map.identity();
 
   static Future load(Type moduleClazz,
       [Map<String, dynamic> parameters = const {}]) async {
@@ -318,12 +333,18 @@ class Registry {
     }
   }
 
+  static void injectMembers(instance) {
+    _injectBindings(instance);
+  }
+
   static Future notifyListeners(Scope scope, Type bindType, bool reversed) =>
       _notifyScopeListeners(
           _getScopeListeners(scope, bindType), scope, reversed);
 
-  static void injectMembers(instance) {
-    _injectBindings(instance);
+  static Object invokeMethod(instance, String method, List positionalArguments,
+      [Map<Symbol, dynamic> namedArguments]) {
+    var instanceMirror = _getInstanceMirror(instance);
+    return instanceMirror.invoke(method, positionalArguments, namedArguments);
   }
 
   static String getSimpleName(Type clazz) {
@@ -332,41 +353,8 @@ class Registry {
     return mirror.simpleName;
   }
 
-  static Type getInstanceType(instance) {
-    if (injectable.canReflect(instance)) {
-      var typeMirror = injectable.reflect(instance).type;
-      if (typeMirror.hasReflectedType) {
-        return typeMirror.reflectedType;
-      }
-    }
-
-    _libraryLogger.finest("$instance is not reflected");
-
-    return null;
-  }
-
-  static bool isDeclarationAnnotatedWith(
-      DeclarationMirror mirror, Type annotationType) {
-    return getDeclarationAnnotations(mirror, annotationType).isNotEmpty;
-  }
-
-  static List getDeclarationAnnotations(DeclarationMirror mirror,
-      [Type annotationType]) {
-    return _getMetadataOfType(mirror.metadata, annotationType);
-  }
-
   static bool isTypeAnnotatedWith(Type clazz, Type annotationType) {
-    return getTypeAnnotations(clazz, annotationType).isNotEmpty;
-  }
-
-  static List getTypeAnnotations(Type clazz, [Type annotationType]) {
-    // TODO volendo si potrebbe andare in ricorsione
-
-    var mirror = _getTypeMirror(clazz);
-
-    return mirror != null
-        ? _getMetadataOfType(mirror.metadata, annotationType)
-        : [];
+    return _getTypeAnnotations(clazz, annotationType).isNotEmpty;
   }
 
   static bool isMethodAnnotatedWith(
@@ -385,53 +373,69 @@ class Registry {
     return metadata;
   }
 
-  static List<DeclarationMirror> getAllDeclarationsAnnotatedWith(
-      Type clazz, Type annotationType) {
-    var declarations = [];
-
-    if (injectable.canReflectType(clazz)) {
-      var classMirror = injectable.reflectType(clazz);
-      while (classMirror != null) {
-        classMirror.declarations.forEach((name, DeclarationMirror mirror) {
-          if (isDeclarationAnnotatedWith(mirror, annotationType)) {
-            declarations.add(mirror);
-          }
-        });
-
-        try {
-          classMirror = classMirror.superclass;
-        } on NoSuchCapabilityError catch (e) {
-          _libraryLogger.finest(
-              "super class of ${classMirror.simpleName} is not reflected", e);
-
-          classMirror = null;
-        }
-      }
-    } else {
-      _libraryLogger.finest("$clazz is not reflected");
-    }
-
-    return declarations;
-  }
-
   static List<MethodMirror> getAllMethodsAnnotatedWith(
       Type clazz, Type annotationType) {
-    return getAllDeclarationsAnnotatedWith(clazz, annotationType)
+    return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
         .where((declaration) => declaration is MethodMirror)
         .toList(growable: false);
   }
 
-  static List<VariableMirror> getAllVariablesAnnotatedWith(
+  static bool _isDeclarationAnnotatedWith(
+      DeclarationMirror mirror, Type annotationType) {
+    return _getDeclarationAnnotations(mirror, annotationType).isNotEmpty;
+  }
+
+  static List _getDeclarationAnnotations(DeclarationMirror mirror,
+      [Type annotationType]) {
+    return _getMetadataOfType(mirror.metadata, annotationType);
+  }
+
+  static List _getTypeAnnotations(Type clazz, [Type annotationType]) {
+    var mirrors = _getClassMirrorHierarchy(clazz);
+
+    var annotations = [];
+
+    for (var mirror in mirrors) {
+      annotations.addAll(_getMetadataOfType(mirror.metadata, annotationType));
+    }
+
+    return annotations;
+  }
+
+  static List<VariableMirror> _getAllVariablesAnnotatedWith(
       Type clazz, Type annotationType) {
-    return getAllDeclarationsAnnotatedWith(clazz, annotationType)
+    return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
         .where((declaration) => declaration is VariableMirror)
         .toList(growable: false);
   }
 
-  static Object invokeMethod(instance, String method, List positionalArguments,
-      [Map<Symbol, dynamic> namedArguments]) {
-    var instanceMirror = _getInstanceMirror(instance);
-    return instanceMirror.invoke(method, positionalArguments, namedArguments);
+  static List<DeclarationMirror> _getAllDeclarationsAnnotatedWith(
+      Type clazz, Type annotationType) {
+    var typeDeclarations = _allAnnotatedDeclarations[clazz];
+    if (typeDeclarations == null) {
+      typeDeclarations = new Map.identity();
+      _allAnnotatedDeclarations[clazz] = typeDeclarations;
+    }
+
+    var declarations;
+    if (typeDeclarations.containsKey(annotationType)) {
+      declarations = typeDeclarations[annotationType];
+    } else {
+      _libraryLogger.finest("Get $annotationType declarations on class $clazz");
+
+      declarations = [];
+      var classMirrors = _getClassMirrorHierarchy(clazz);
+      for (var classMirror in classMirrors) {
+        classMirror.declarations.forEach((name, DeclarationMirror mirror) {
+          if (_isDeclarationAnnotatedWith(mirror, annotationType)) {
+            declarations.add(mirror);
+          }
+        });
+      }
+
+      typeDeclarations[annotationType] = declarations;
+    }
+    return declarations;
   }
 
   static _ScopeContext _getScopeContext(Scope scope) {
@@ -483,23 +487,23 @@ class Registry {
 
     if (instanceMirror != null) {
       var declarations =
-          getAllVariablesAnnotatedWith(getInstanceType(instance), Inject);
+          _getAllVariablesAnnotatedWith(_getInstanceType(instance), Inject);
 
       for (VariableMirror declaration in declarations) {
-        var name = declaration.simpleName;
-        var variableType = declaration.type;
-
-        var injectAnnotations = getDeclarationAnnotations(declaration, Inject);
+        var injectAnnotations = _getDeclarationAnnotations(declaration, Inject);
 
         var injectInstance =
             injectAnnotations.isNotEmpty ? injectAnnotations.first : null;
 
+        var name = declaration.simpleName;
         var boundType = injectInstance.type;
 
-        _libraryLogger.finest("Inject on variable $name bound to ${boundType ??
-                "unspecified"}");
+        _libraryLogger.finest(
+            "Inject on variable $name bound to ${boundType ?? "unspecified"}");
 
-        if (_isGenericTypeOf(variableType, _PROVIDER_TYPE_NAME)) {
+        var variabileTypeMirror = declaration.type;
+
+        if (_isGenericTypeOf(variabileTypeMirror, _PROVIDER_TYPE_NAME)) {
           _libraryLogger.finest("Provider injection");
 
           if (boundType != null) {
@@ -510,35 +514,37 @@ class Registry {
           } else {
             throw new ArgumentError();
           }
-        } else if (_isGenericTypeOf(variableType, _FUTURE_TYPE_NAME)) {
+        } else if (_isGenericTypeOf(variabileTypeMirror, _FUTURE_TYPE_NAME)) {
           _libraryLogger.finest("Future injection");
 
           if (boundType != null) {
             _libraryLogger.finest("Injecting $boundType");
 
-            instanceMirror.invokeSetter(
-                name, Registry.lookupProvider(boundType));
+            instanceMirror.invokeSetter(name, Registry.lookupObject(boundType));
           } else {
             throw new ArgumentError();
           }
         } else if (_isGenericTypeOf(
-            variableType, _FUNCTION_PROVIDER_TYPE_NAME)) {
+            variabileTypeMirror, _FUNCTION_PROVIDER_TYPE_NAME)) {
           _libraryLogger.finest("Provide function injection");
 
           if (boundType != null) {
             _libraryLogger.finest("Injecting $boundType");
 
+            // TODO verificare quando dart2js offrirà il supporto ai typedef con generici
+            throw new UnsupportedError("Provide function injection");
+/*
             instanceMirror.invokeSetter(
                 name, Registry.lookupProvideFunction(boundType));
+*/
           } else {
             throw new ArgumentError();
           }
-        } else if (variableType is ClassMirror &&
-            variableType.hasReflectedType) {
-          _libraryLogger.finest("Injecting ${variableType.simpleName}");
+        } else if (variabileTypeMirror is ClassMirror) {
+          _libraryLogger.finest("Injecting ${variabileTypeMirror.simpleName}");
 
           instanceMirror.invokeSetter(
-              name, Registry.lookupObject(variableType.reflectedType));
+              name, Registry.lookupObject(variabileTypeMirror.reflectedType));
         } else {
           throw new ArgumentError();
         }
@@ -579,70 +585,7 @@ class Registry {
               _getInstanceListeners(provider, OnProvidedUnbinding).reversed),
           scope);
 
-  static List<String> _getInstanceListeners(instance, Type bindType) {
-    _libraryLogger.finest("Get $bindType listeners on instance $instance");
-
-    var instanceType = getInstanceType(instance);
-
-    return instanceType != null
-        ? _getTypeListeners(instanceType, bindType)
-        : [];
-  }
-
-  static Map<Type, _BindingListeners> _getScopeListeners(
-      Scope scope, Type bindType) {
-    _libraryLogger.finest("Get $bindType listeners on scope $scope");
-
-    var listeners = {};
-    _MODULE?._bindings?.forEach((clazz, binding) {
-      if (binding.scope == scope) {
-        var instanceListeners =
-            _getInstanceListeners(binding.provider, bindType);
-        for (var symbol in instanceListeners) {
-          _BindingListeners bindingListeners = listeners[clazz];
-          if (bindingListeners == null) {
-            bindingListeners = new _BindingListeners(binding.provider);
-            listeners[clazz] = bindingListeners;
-          }
-          bindingListeners.providerListeners.add(symbol);
-        }
-
-        var target;
-        if (binding.provider is ToInstanceProvider) {
-          target = getInstanceType(binding.provider._instance);
-        } else if (binding.provider is ToClassProvider) {
-          target = binding.provider._clazz;
-        } else {
-          target = clazz;
-        }
-
-        var typeListeners = _getTypeListeners(target, bindType);
-        for (var symbol in typeListeners) {
-          _BindingListeners bindingListeners = listeners[clazz];
-          if (bindingListeners == null) {
-            bindingListeners = new _BindingListeners(binding.provider);
-            listeners[clazz] = bindingListeners;
-          }
-          bindingListeners.instanceListeners.add(symbol);
-        }
-      }
-    });
-
-    return listeners;
-  }
-
-  static List<String> _getTypeListeners(Type type, Type bindType) {
-    _libraryLogger.finest("Get $bindType listeners on type $type");
-
-    return getAllMethodsAnnotatedWith(type, bindType)
-        .map((mirror) => mirror.simpleName)
-        .toList(growable: false);
-  }
-
   static void _notifyListeners(instance, List<String> listeners, Scope scope) {
-    _libraryLogger.finest(
-        "Notify ${listeners.length} listeners on instance $instance in scope $scope");
-
     var instanceMirror = _getInstanceMirror(instance);
     for (var listener in listeners) {
       instanceMirror.invoke(listener, []);
@@ -651,9 +594,6 @@ class Registry {
 
   static Future _notifyFutureListeners(
       instance, List<String> listeners, Scope scope) async {
-    _libraryLogger.finest(
-        "Notify ${listeners.length} listeners on future of instance $instance in scope $scope");
-
     var instanceMirror = _getInstanceMirror(instance);
 
     await Future.forEach(
@@ -662,9 +602,6 @@ class Registry {
 
   static void _notifyProvidedListeners(
       Provider provider, instance, List<String> listeners, Scope scope) {
-    _libraryLogger.finest(
-        "Notify ${listeners.length} listeners on provider $provider of instance $instance in scope $scope");
-
     var providerMirror = _getInstanceMirror(provider);
 
     for (var listener in listeners) {
@@ -674,9 +611,6 @@ class Registry {
 
   static Future _notifyFutureProvidedListeners(
       Provider provider, instance, List<String> listeners, Scope scope) async {
-    _libraryLogger.finest(
-        "Notify ${listeners.length} listeners on provider $provider of future instance $instance in scope $scope");
-
     var providerMirror = _getInstanceMirror(provider);
 
     await Future.forEach(
@@ -685,9 +619,6 @@ class Registry {
 
   static Future _notifyScopeListeners(Map<Type, _BindingListeners> listeners,
       Scope scope, bool reversed) async {
-    _libraryLogger
-        .finest("Notify ${listeners.length} scope listeners on scope $scope");
-
     Iterable keys = reversed
         ? new List.from(listeners.keys, growable: false).reversed
         : listeners.keys;
@@ -714,31 +645,84 @@ class Registry {
     });
   }
 
-  static InstanceMirror _getInstanceMirror(instance) {
-    if (injectable.canReflect(instance)) {
-      return injectable.reflect(instance);
-    } else {
-      _libraryLogger.finest("$instance not reflected");
-      return null;
-    }
+  static List<String> _getInstanceListeners(instance, Type bindType) {
+    var instanceType = _getInstanceType(instance);
+
+    return instanceType != null
+        ? _getTypeListeners(instanceType, bindType)
+        : [];
   }
 
-  static TypeMirror _getTypeMirror(Type type) {
-    if (injectable.canReflectType(type)) {
-      return injectable.reflectType(type);
-    } else {
-      _libraryLogger.finest("$type not reflected");
-      return null;
+  static Map<Type, _BindingListeners> _getScopeListeners(
+      Scope scope, Type bindType) {
+    var bindListeners = _scopeListeners[scope];
+    if (bindListeners == null) {
+      bindListeners = new Map.identity();
+      _scopeListeners[scope] = bindListeners;
     }
+
+    var listeners;
+    if (bindListeners.containsKey(bindType)) {
+      listeners = bindListeners[bindType];
+    } else {
+      _libraryLogger.finest("Get $bindType listeners on scope $scope");
+
+      listeners = {};
+      _MODULE?._bindings?.forEach((clazz, binding) {
+        if (binding.scope == scope) {
+          var instanceListeners =
+              _getInstanceListeners(binding.provider, bindType);
+          for (var symbol in instanceListeners) {
+            _BindingListeners bindingListeners = listeners[clazz];
+            if (bindingListeners == null) {
+              bindingListeners = new _BindingListeners(binding.provider);
+              listeners[clazz] = bindingListeners;
+            }
+            bindingListeners.providerListeners.add(symbol);
+          }
+
+          var target;
+          if (binding.provider is ToInstanceProvider) {
+            target = _getInstanceType(binding.provider._instance);
+          } else if (binding.provider is ToClassProvider) {
+            target = binding.provider._clazz;
+          } else {
+            target = clazz;
+          }
+
+          var typeListeners = _getTypeListeners(target, bindType);
+          for (var symbol in typeListeners) {
+            _BindingListeners bindingListeners = listeners[clazz];
+            if (bindingListeners == null) {
+              bindingListeners = new _BindingListeners(binding.provider);
+              listeners[clazz] = bindingListeners;
+            }
+            bindingListeners.instanceListeners.add(symbol);
+          }
+        }
+      });
+
+      bindListeners[bindType] = listeners;
+    }
+    return listeners;
+  }
+
+  static List<String> _getTypeListeners(Type type, Type bindType) {
+    return getAllMethodsAnnotatedWith(type, bindType)
+        .map((mirror) => mirror.simpleName)
+        .toList(growable: false);
+  }
+
+  static Type _getInstanceType(instance) {
+    var instanceMirror = _getInstanceMirror(instance);
+    return instanceMirror != null
+        ? _getReflectedType(instanceMirror.type)
+        : null;
   }
 
   static List _getMetadataOfType(List metadata, [Type annotationType]) {
-    var filterTypeMirror;
-    if (annotationType != null && injectable.canReflectType(annotationType)) {
-      filterTypeMirror = injectable.reflectType(annotationType);
-    } else {
-      _libraryLogger.finest("$annotationType is not reflected");
-    }
+    var filterTypeMirror =
+        annotationType != null ? _getTypeMirror(annotationType) : null;
 
     if (filterTypeMirror != null) {
       return metadata.where((annotation) {
@@ -746,9 +730,8 @@ class Registry {
           var annotationMirror = injectable.reflect(annotation);
           var annotationTypeMirror = annotationMirror.type;
 
-          // TODO per semplicità vado puntuale sui nodi (c'erano problemi con reflectable in dart2js)
-          return annotationTypeMirror.qualifiedName ==
-              filterTypeMirror.qualifiedName;
+          return _isGenericTypeOf(
+              annotationTypeMirror, filterTypeMirror.qualifiedName);
         } else {
           return false;
         }
@@ -760,9 +743,77 @@ class Registry {
     }
   }
 
-  // TODO per semplicità vado puntuale sui nodi (c'erano problemi con reflectable in dart2js)
-  static bool _isGenericTypeOf(TypeMirror typeMirror, String genericType) =>
-      typeMirror.qualifiedName == genericType;
+  static Type _getReflectedType(TypeMirror typeMirror) {
+    var type;
+    if (_reflectedTypes.containsKey(typeMirror)) {
+      type = _reflectedTypes[typeMirror];
+    } else {
+      if (typeMirror.hasReflectedType) {
+        type = typeMirror.reflectedType;
+      } else {
+        _libraryLogger.finest("Type mirror $typeMirror is not reflected");
+        type = null;
+      }
+      _reflectedTypes[typeMirror] = type;
+    }
+    return type;
+  }
+
+  static InstanceMirror _getInstanceMirror(instance) {
+    if (injectable.canReflect(instance)) {
+      return injectable.reflect(instance);
+    } else {
+      _libraryLogger.finest("Instance $instance not reflected");
+      return null;
+    }
+  }
+
+  static TypeMirror _getTypeMirror(Type type) {
+    var typeMirror;
+    if (_reflectedTypeMirrors.containsKey(type)) {
+      typeMirror = _reflectedTypeMirrors[type];
+    } else {
+      if (injectable.canReflectType(type)) {
+        typeMirror = injectable.reflectType(type);
+      } else {
+        _libraryLogger.finest("Type $type not reflected");
+        typeMirror = null;
+      }
+      _reflectedTypeMirrors[typeMirror] = typeMirror;
+    }
+    return typeMirror;
+  }
+
+  static List<ClassMirror> _getClassMirrorHierarchy(Type clazz) {
+    var classMirrors;
+    if (_reflectedClassMirrorHierarchies.containsKey(clazz)) {
+      classMirrors = _reflectedClassMirrorHierarchies[clazz];
+    } else {
+      classMirrors = [];
+
+      var classMirror = _getTypeMirror(clazz);
+      while (classMirror != null) {
+        classMirrors.add(classMirror);
+
+        try {
+          classMirror = classMirror.superclass;
+        } on NoSuchCapabilityError catch (e) {
+          _libraryLogger.finest(
+              "Super class of ${classMirror.simpleName} is not reflected", e);
+
+          classMirror = null;
+        }
+      }
+
+      _reflectedClassMirrorHierarchies[clazz] = classMirrors;
+    }
+    return classMirrors;
+  }
+
+  static bool _isGenericTypeOf(TypeMirror typeMirror, String genericType) {
+    // TODO per semplicità vado puntuale sui nodi (ci sono problemi con reflectable in dart2js nel recupero del reflectedType di tipi con generici)
+    return typeMirror.qualifiedName == genericType;
+  }
 
   static void _logReflector(Reflectable reflector) {
     _libraryLogger.finest("******************************");
@@ -809,7 +860,7 @@ class ToClassProvider<T> extends Provider<T> {
   ToClassProvider(this._clazz);
 
   T get() =>
-      (injectable.reflectType(_clazz) as ClassMirror).newInstance("", []);
+      (Registry._getTypeMirror(_clazz) as ClassMirror).newInstance("", []);
 }
 
 @injectable

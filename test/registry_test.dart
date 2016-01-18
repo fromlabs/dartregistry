@@ -175,6 +175,13 @@ class MyServiceImpl extends BaseService with Loggable implements MyService {
   Future<String> echo(String msg) async {
     info("-> Start");
 
+    info("##################");
+    info(injectService.toString());
+    info(injectServiceProvider.get().toString());
+    info((await dateProvider.get()).toString());
+    info((await dateFuture).toString());
+    info("##################");
+
     var response = await super.echo(msg);
 
     info(response);
@@ -193,18 +200,14 @@ abstract class BaseService {
   @Inject(String)
   Provider<String> stringProvider;
 
-  @Inject(InjectService)
+  @inject
   InjectService injectService;
 
   @Inject(InjectService)
   Provider<InjectService> injectServiceProvider;
 
-  @Inject(InjectService)
-  ProvideFunction<InjectService> provideInjectService;
-
-  InjectService get injectService3 => provideInjectService();
-
-  InjectService get injectService2 => injectServiceProvider.get();
+  @Inject(DateTime)
+  Future<DateTime> dateFuture;
 
   @onBind
   void postBind() => _logger.info("postBind");

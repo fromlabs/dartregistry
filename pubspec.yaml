@@ -9,3 +9,7 @@ dependencies:
   logging: ^0.11.0
   stack_trace: ^1.5.0
   reflectable: ^0.5.1
+transformers:
+- reflectable:
+    entry_points:
+      - test/registry_test.dart
