@@ -1,4 +1,4 @@
-library dartregistry.dartregistry;
+library dartregistry.registry;
 
 import "dart:async";
 
@@ -8,12 +8,12 @@ import "package:stack_trace/stack_trace.dart";
 @GlobalQuantifyCapability(r"^dart.async.Future$", injectable)
 import 'package:reflectable/reflectable.dart';
 
-final Logger _libraryLogger = new Logger("dartregistry.dartregistry");
+final Logger _libraryLogger = new Logger("dartregistry.registry");
 
 const String _FUTURE_TYPE_NAME = "dart.async.Future";
-const String _PROVIDER_TYPE_NAME = "dartregistry.dartregistry.Provider";
+const String _PROVIDER_TYPE_NAME = "dartregistry.registry.Provider";
 const String _FUNCTION_PROVIDER_TYPE_NAME =
-    "dartregistry.dartregistry.ProvideFunction";
+    "dartregistry.registry.ProvideFunction";
 
 const Injectable injectable = const Injectable();
 const Inject inject = const Inject();
@@ -139,7 +139,8 @@ abstract class Loggable {
 
 class LogPrintHandler {
   void call(LogRecord logRecord) {
-    print('[${logRecord.level.name}: ${logRecord.loggerName}] ${logRecord.time}: ${logRecord.message}');
+    print(
+        '[${logRecord.level.name}: ${logRecord.loggerName}] ${logRecord.time}: ${logRecord.message}');
     if (logRecord.error != null) {
       print(logRecord.error);
     }
@@ -176,13 +177,10 @@ class BufferedLogHandler {
   }
 }
 
-@injectable
 abstract class RegistryModule extends Loggable {
   Map<Type, _ProviderBinding> _bindings;
 
-  Future configure(Map<String, dynamic> parameters) async {
-    info("################");
-
+  Future configure() async {
     _bindings = {};
   }
 
@@ -253,24 +251,16 @@ class Registry {
           Map<Type, List<DeclarationMirror>>> _allAnnotatedDeclarations =
       new Map.identity();
 
-  static Future load(Type moduleClazz,
-      [Map<String, dynamic> parameters = const {}]) async {
-    _logger.finest("Load registry module");
+  static Future load(RegistryModule module) async {
+    _logger.finest("Load registry module: $module");
 
     _logReflector(injectable);
-
-    var module =
-        (_getTypeMirror(moduleClazz) as ClassMirror).newInstance("", []);
-
-    if (module is! RegistryModule) {
-      throw new ArgumentError("$moduleClazz is not a registry module");
-    }
 
     _MODULE = module;
 
     _SCOPED_PROVIDERS_CACHE = {};
 
-    await _MODULE.configure(parameters);
+    await _MODULE.configure();
 
     _injectProviders();
   }
