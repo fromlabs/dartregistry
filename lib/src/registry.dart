@@ -22,30 +22,73 @@ const String _FUNCTION_PROVIDER_TYPE_NAME =
 class Registry {
   static const _SCOPE_CONTEXT_HOLDER = "_SCOPE_CONTEXT_HOLDER";
 
-  static Logger _logger = new Logger("dartregistry.registry.Registry");
+  static final Registry _singleton = new Registry();
 
-  static RegistryModule _MODULE;
+  Logger _logger = new Logger("dartregistry.registry.Registry");
 
-  static _ScopeContext _ISOLATE_SCOPE_CONTEXT;
+  RegistryModule _MODULE;
 
-  static Map<Type, ProvideFunction> _SCOPED_PROVIDERS_CACHE;
+  _ScopeContext _ISOLATE_SCOPE_CONTEXT;
 
-  static final Map<TypeMirror, Type> _reflectedTypes = new Map.identity();
+  Map<Type, ProvideFunction> _SCOPED_PROVIDERS_CACHE;
 
-  static final Map<Type, TypeMirror> _reflectedTypeMirrors = new Map.identity();
+  final Map<TypeMirror, Type> _reflectedTypes = new Map.identity();
 
-  static final Map<Type, List<ClassMirror>> _reflectedClassMirrorHierarchies =
+  final Map<Type, TypeMirror> _reflectedTypeMirrors = new Map.identity();
+
+  final Map<Type, List<ClassMirror>> _reflectedClassMirrorHierarchies =
       new Map.identity();
 
-  static final Map<Scope,
-          Map<Type, Map<Type, BindingListeners>>> _scopeListeners =
+  final Map<Scope, Map<Type, Map<Type, BindingListeners>>> _scopeListeners =
       new Map.identity();
 
-  static final Map<Type,
+  final Map<Type,
           Map<Type, List<DeclarationMirror>>> _allAnnotatedDeclarations =
       new Map.identity();
 
-  static Future load(RegistryModule module) async {
+  static Future load(RegistryModule module) => _singleton._load(module);
+  static Future unload() => _singleton._unload();
+
+  static Future openScope(Scope scope) => _singleton._openScope(scope);
+  static Future closeScope(Scope scope) => _singleton._closeScope(scope);
+  static runInScope(Scope scope, ScopeRunnable runnable) =>
+      _singleton._runInScope(scope, runnable);
+
+  static lookupObject(Type clazz) => _singleton._lookupObject(clazz);
+  static lookupProvider(Type clazz) => _singleton._lookupProvider(clazz);
+  static ProvideFunction lookupProvideFunction(Type clazz) =>
+      _singleton._lookupProvideFunction(clazz);
+
+  static void injectMembers(instance) => _singleton._injectMembers(instance);
+  static Future notifyListeners(Scope scope, Type bindType, bool reversed) =>
+      _singleton._notifyListeners(scope, bindType, reversed);
+
+  static ClassDescriptor getInstanceClass(instance) =>
+      _singleton._getInstanceClass(instance);
+  static ClassDescriptor getClass(Type type) => _singleton._getClass(type);
+  static List<MethodDescriptor> getAllMethodsAnnotatedWith(
+          ClassDescriptor classDescriptor, Type annotationType) =>
+      _singleton._getAllMethodsAnnotatedWith(classDescriptor, annotationType);
+
+  static bool isClassAnnotatedWith(
+          ClassDescriptor descriptor, Type annotationType) =>
+      _singleton._isClassAnnotatedWith(descriptor, annotationType);
+  static List getClassAnnotationsWith(
+          ClassDescriptor descriptor, Type annotationType) =>
+      _singleton._getClassAnnotationsWith(descriptor, annotationType);
+  static bool isMethodAnnotatedWith(
+          MethodDescriptor descriptor, Type annotationType) =>
+      _singleton._isMethodAnnotatedWith(descriptor, annotationType);
+  static List getMethodAnnotationsWith(
+          MethodDescriptor descriptor, Type annotationType) =>
+      _singleton._getMethodAnnotationsWith(descriptor, annotationType);
+  static Object invokeMethod(
+          instance, MethodDescriptor method, List positionalArguments,
+          [Map<Symbol, dynamic> namedArguments]) =>
+      _singleton._invokeMethod(
+          instance, method, positionalArguments, namedArguments);
+
+  Future _load(RegistryModule module) async {
     _logger.finest("Load registry module: $module");
 
     _logReflector(injectable);
@@ -59,7 +102,7 @@ class Registry {
     _injectProviders();
   }
 
-  static Future unload() async {
+  Future _unload() async {
     _logger.finest("Unload module");
 
     try {
@@ -70,7 +113,7 @@ class Registry {
     }
   }
 
-  static Future openScope(Scope scope) async {
+  Future _openScope(Scope scope) async {
     _logger.finest("Open scope $scope");
 
     if (scope == Scope.NONE) {
@@ -98,7 +141,7 @@ class Registry {
     await _notifyPostOpenedListeners(scope);
   }
 
-  static Future closeScope(Scope scope) async {
+  Future _closeScope(Scope scope) async {
     _logger.finest("Close scope ${scope}");
 
     _ScopeContext scopeContext;
@@ -133,7 +176,7 @@ class Registry {
     }
   }
 
-  static runInScope(Scope scope, ScopeRunnable runnable) => runZoned(
+  _runInScope(Scope scope, ScopeRunnable runnable) => runZoned(
       () => Chain.capture(() async {
             await openScope(scope);
             var result = await runnable();
@@ -145,7 +188,7 @@ class Registry {
           }),
       zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
 
-  static lookupObject(Type clazz) {
+  _lookupObject(Type clazz) {
     ProvideFunction provide = lookupProvideFunction(clazz);
     if (provide != null) {
       return provide();
@@ -154,7 +197,7 @@ class Registry {
     }
   }
 
-  static lookupProvider(Type clazz) {
+  _lookupProvider(Type clazz) {
     ProvideFunction provider = lookupProvideFunction(clazz);
     if (provider != null) {
       return new ToFunctionProvider(provider);
@@ -163,7 +206,7 @@ class Registry {
     }
   }
 
-  static ProvideFunction lookupProvideFunction(Type clazz) {
+  ProvideFunction _lookupProvideFunction(Type clazz) {
     if (_MODULE == null) {
       throw new StateError("Registry module not loaded");
     }
@@ -199,76 +242,74 @@ class Registry {
     }
   }
 
-  static void injectMembers(instance) {
-    _injectBindings(instance);
-  }
+  void _injectMembers(instance) => instance._injectBindings(instance);
 
-  static Future notifyListeners(Scope scope, Type bindType, bool reversed) =>
+  Future _notifyListeners(Scope scope, Type bindType, bool reversed) =>
       _notifyScopeListeners(
           _getScopeListeners(scope, bindType), scope, reversed);
 
-  static ClassDescriptor getInstanceClass(instance) {
+  ClassDescriptor _getInstanceClass(instance) {
     var instanceMirror = _getInstanceMirror(instance);
 
     if (instanceMirror != null) {
-      return _getClass(instanceMirror.type);
+      return _getClassInternal(instanceMirror.type);
     } else {
       return null;
     }
   }
 
-  static ClassDescriptor getClass(Type type) {
+  ClassDescriptor _getClass(Type type) {
     var typeMirror = _getTypeMirror(type);
 
     if (typeMirror != null) {
-      return _getClass(typeMirror);
+      return _getClassInternal(typeMirror);
     } else {
       return null;
     }
   }
 
-  static List<MethodDescriptor> getAllMethodsAnnotatedWith(
+  List<MethodDescriptor> _getAllMethodsAnnotatedWith(
       ClassDescriptor classDescriptor, Type annotationType) {
     var methods = {};
 
-    _getAllMethodsAnnotatedWith(classDescriptor.type, annotationType).forEach(
-        (methodMirror) => methods.putIfAbsent(methodMirror.simpleName, () {
-              var annotations = _getMethodAnnotations(
-                  classDescriptor.type, methodMirror.simpleName);
+    _getAllMethodsAnnotatedWithInternal(classDescriptor.type, annotationType)
+        .forEach(
+            (methodMirror) => methods.putIfAbsent(methodMirror.simpleName, () {
+                  var annotations = _getMethodAnnotations(
+                      classDescriptor.type, methodMirror.simpleName);
 
-              return CommonInternal.newMethodDescriptor(
-                  classDescriptor,
-                  methodMirror.simpleName,
-                  methodMirror.parameters.length,
-                  annotations);
-            }));
+                  return CommonInternal.newMethodDescriptor(
+                      classDescriptor,
+                      methodMirror.simpleName,
+                      methodMirror.parameters.length,
+                      annotations);
+                }));
 
     return methods.values.toList(growable: false);
   }
 
-  static bool isClassAnnotatedWith(
-          ClassDescriptor descriptor, Type annotationType) =>
+  bool _isClassAnnotatedWith(ClassDescriptor descriptor, Type annotationType) =>
       getClassAnnotationsWith(descriptor, annotationType).isNotEmpty;
 
-  static List getClassAnnotationsWith(
+  List _getClassAnnotationsWith(
           ClassDescriptor descriptor, Type annotationType) =>
       _getMetadataOfType(descriptor.annotations, annotationType);
 
-  static bool isMethodAnnotatedWith(
+  bool _isMethodAnnotatedWith(
           MethodDescriptor descriptor, Type annotationType) =>
       getMethodAnnotationsWith(descriptor, annotationType).isNotEmpty;
 
-  static List getMethodAnnotationsWith(
+  List _getMethodAnnotationsWith(
           MethodDescriptor descriptor, Type annotationType) =>
       _getMetadataOfType(descriptor.annotations, annotationType);
 
-  static Object invokeMethod(
+  Object _invokeMethod(
           instance, MethodDescriptor method, List positionalArguments,
           [Map<Symbol, dynamic> namedArguments]) =>
       _getInstanceMirror(instance)
           .invoke(method.name, positionalArguments, namedArguments);
 
-  static List _getTypeAnnotations(Type clazz) {
+  List _getTypeAnnotations(Type clazz) {
     var mirrors = _getClassMirrorHierarchy(clazz);
 
     var annotations = [];
@@ -280,8 +321,7 @@ class Registry {
     return annotations;
   }
 
-  static List _getMethodAnnotations(Type clazz, String method,
-      [Type annotationType]) {
+  List _getMethodAnnotations(Type clazz, String method, [Type annotationType]) {
     var mirrors = _getClassMirrorHierarchy(clazz);
 
     var annotations = [];
@@ -296,7 +336,7 @@ class Registry {
     return annotations;
   }
 
-  static _ScopeContext _getScopeContext(Scope scope) {
+  _ScopeContext _getScopeContext(Scope scope) {
     if (scope == Scope.ISOLATE) {
       return _ISOLATE_SCOPE_CONTEXT;
     } else {
@@ -309,7 +349,7 @@ class Registry {
     }
   }
 
-  static _provideInScope(Provider provider, _ScopeContext scopeContext) {
+  _provideInScope(Provider provider, _ScopeContext scopeContext) {
     Map<Provider, dynamic> providers = scopeContext.bindings;
 
     var instance = providers[provider];
@@ -332,14 +372,14 @@ class Registry {
     return instance;
   }
 
-  static void _injectProviders() {
+  void _injectProviders() {
     for (var providerBinding
         in RegistryModuleInternal.getBindings(_MODULE).values) {
       _injectBindings(providerBinding.provider);
     }
   }
 
-  static void _injectBindings(instance) {
+  void _injectBindings(instance) {
     _logger.finest("Inject bindings on $instance");
 
     var instanceMirror = _getInstanceMirror(instance);
@@ -411,31 +451,30 @@ class Registry {
     }
   }
 
-  static Future _notifyPostOpenedListeners(Scope scope) =>
-      _notifyScopeListeners(
-          _getScopeListeners(scope, OnScopeOpened), scope, false);
+  Future _notifyPostOpenedListeners(Scope scope) => _notifyScopeListeners(
+      _getScopeListeners(scope, OnScopeOpened), scope, false);
 
-  static Future _notifyPreClosingListeners(Scope scope) {
+  Future _notifyPreClosingListeners(Scope scope) {
     return _notifyScopeListeners(
         _getScopeListeners(scope, OnScopeClosing), scope, true);
   }
 
-  static void _notifyPostBindListeners(instance, Scope scope) =>
-      _notifyListeners(
+  void _notifyPostBindListeners(instance, Scope scope) =>
+      _notifyListenersInternal(
           instance, _getInstanceListeners(instance, OnBind), scope);
 
-  static Future _notifyPreUnbindListeners(instance, Scope scope) =>
+  Future _notifyPreUnbindListeners(instance, Scope scope) =>
       _notifyFutureListeners(
           instance,
           new List.from(_getInstanceListeners(instance, OnUnbinding).reversed),
           scope);
 
-  static void _notifyPostProvidedBindListeners(
+  void _notifyPostProvidedBindListeners(
           Provider provider, instance, Scope scope) =>
       _notifyProvidedListeners(provider, instance,
           _getInstanceListeners(provider, OnProvidedBind), scope);
 
-  static Future _notifyPreProvidedUnbindListeners(
+  Future _notifyPreProvidedUnbindListeners(
           Provider provider, instance, Scope scope) =>
       _notifyFutureProvidedListeners(
           provider,
@@ -444,14 +483,14 @@ class Registry {
               _getInstanceListeners(provider, OnProvidedUnbinding).reversed),
           scope);
 
-  static void _notifyListeners(instance, List<String> listeners, Scope scope) {
+  void _notifyListenersInternal(instance, List<String> listeners, Scope scope) {
     var instanceMirror = _getInstanceMirror(instance);
     for (var listener in listeners) {
       instanceMirror.invoke(listener, []);
     }
   }
 
-  static Future _notifyFutureListeners(
+  Future _notifyFutureListeners(
       instance, List<String> listeners, Scope scope) async {
     var instanceMirror = _getInstanceMirror(instance);
 
@@ -459,7 +498,7 @@ class Registry {
         listeners, (listener) => instanceMirror.invoke(listener, []));
   }
 
-  static void _notifyProvidedListeners(
+  void _notifyProvidedListeners(
       Provider provider, instance, List<String> listeners, Scope scope) {
     var providerMirror = _getInstanceMirror(provider);
 
@@ -468,7 +507,7 @@ class Registry {
     }
   }
 
-  static Future _notifyFutureProvidedListeners(
+  Future _notifyFutureProvidedListeners(
       Provider provider, instance, List<String> listeners, Scope scope) async {
     var providerMirror = _getInstanceMirror(provider);
 
@@ -476,7 +515,7 @@ class Registry {
         listeners, (listener) => providerMirror.invoke(listener, [instance]));
   }
 
-  static Future _notifyScopeListeners(
+  Future _notifyScopeListeners(
       Map<Type, BindingListeners> listeners, Scope scope, bool reversed) async {
     Iterable keys = reversed
         ? new List.from(listeners.keys, growable: false).reversed
@@ -504,7 +543,7 @@ class Registry {
     });
   }
 
-  static List<String> _getInstanceListeners(instance, Type bindType) {
+  List<String> _getInstanceListeners(instance, Type bindType) {
     var instanceType = _getInstanceType(instance);
 
     return instanceType != null
@@ -512,8 +551,7 @@ class Registry {
         : [];
   }
 
-  static Map<Type, BindingListeners> _getScopeListeners(
-      Scope scope, Type bindType) {
+  Map<Type, BindingListeners> _getScopeListeners(Scope scope, Type bindType) {
     var bindListeners = _scopeListeners[scope];
     if (bindListeners == null) {
       bindListeners = new Map.identity();
@@ -566,13 +604,13 @@ class Registry {
     return listeners;
   }
 
-  static List<String> _getTypeListeners(Type type, Type bindType) {
-    return _getAllMethodsAnnotatedWith(type, bindType)
+  List<String> _getTypeListeners(Type type, Type bindType) {
+    return _getAllMethodsAnnotatedWithInternal(type, bindType)
         .map((mirror) => mirror.simpleName)
         .toList(growable: false);
   }
 
-  static ClassDescriptor _getClass(TypeMirror typeMirror) {
+  ClassDescriptor _getClassInternal(TypeMirror typeMirror) {
     var type = _getReflectedType(typeMirror);
 
     if (type != null) {
@@ -585,14 +623,14 @@ class Registry {
     }
   }
 
-  static Type _getInstanceType(instance) {
+  Type _getInstanceType(instance) {
     var instanceMirror = _getInstanceMirror(instance);
     return instanceMirror != null
         ? _getReflectedType(instanceMirror.type)
         : null;
   }
 
-  static Type _getReflectedType(TypeMirror typeMirror) {
+  Type _getReflectedType(TypeMirror typeMirror) {
     var type;
     if (_reflectedTypes.containsKey(typeMirror)) {
       type = _reflectedTypes[typeMirror];
@@ -608,7 +646,7 @@ class Registry {
     return type;
   }
 
-  static InstanceMirror _getInstanceMirror(instance) {
+  InstanceMirror _getInstanceMirror(instance) {
     if (injectable.canReflect(instance)) {
       return injectable.reflect(instance);
     } else {
@@ -617,7 +655,7 @@ class Registry {
     }
   }
 
-  static TypeMirror _getTypeMirror(Type type) {
+  TypeMirror _getTypeMirror(Type type) {
     var typeMirror;
     if (_reflectedTypeMirrors.containsKey(type)) {
       typeMirror = _reflectedTypeMirrors[type];
@@ -633,7 +671,7 @@ class Registry {
     return typeMirror;
   }
 
-  static List<ClassMirror> _getClassMirrorHierarchy(Type clazz) {
+  List<ClassMirror> _getClassMirrorHierarchy(Type clazz) {
     var classMirrors;
     if (_reflectedClassMirrorHierarchies.containsKey(clazz)) {
       classMirrors = _reflectedClassMirrorHierarchies[clazz];
@@ -659,26 +697,26 @@ class Registry {
     return classMirrors;
   }
 
-  static bool _isGenericTypeOf(TypeMirror typeMirror, String genericType) {
+  bool _isGenericTypeOf(TypeMirror typeMirror, String genericType) {
     // TODO per semplicità vado puntuale sui nodi (ci sono problemi con reflectable in dart2js nel recupero del reflectedType di tipi con generici)
     return typeMirror.qualifiedName == genericType;
   }
 
-  static List<MethodMirror> _getAllMethodsAnnotatedWith(
+  List<MethodMirror> _getAllMethodsAnnotatedWithInternal(
       Type clazz, Type annotationType) {
     return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
         .where((declaration) => declaration is MethodMirror)
         .toList(growable: false);
   }
 
-  static List<VariableMirror> _getAllVariablesAnnotatedWith(
+  List<VariableMirror> _getAllVariablesAnnotatedWith(
       Type clazz, Type annotationType) {
     return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
         .where((declaration) => declaration is VariableMirror)
         .toList(growable: false);
   }
 
-  static List<DeclarationMirror> _getAllDeclarationsAnnotatedWith(
+  List<DeclarationMirror> _getAllDeclarationsAnnotatedWith(
       Type clazz, Type annotationType) {
     var typeDeclarations = _allAnnotatedDeclarations[clazz];
     if (typeDeclarations == null) {
@@ -707,17 +745,17 @@ class Registry {
     return declarations;
   }
 
-  static bool _isDeclarationAnnotatedWith(
+  bool _isDeclarationAnnotatedWith(
       DeclarationMirror mirror, Type annotationType) {
     return _getDeclarationAnnotations(mirror, annotationType).isNotEmpty;
   }
 
-  static List _getDeclarationAnnotations(DeclarationMirror mirror,
+  List _getDeclarationAnnotations(DeclarationMirror mirror,
       [Type annotationType]) {
     return _getMetadataOfType(mirror.metadata, annotationType);
   }
 
-  static List _getMetadataOfType(List metadata, [Type annotationType]) {
+  List _getMetadataOfType(List metadata, [Type annotationType]) {
     var filterTypeMirror =
         annotationType != null ? _getTypeMirror(annotationType) : null;
 
@@ -740,7 +778,7 @@ class Registry {
     }
   }
 
-  static void _logReflector(Reflectable reflector) {
+  void _logReflector(Reflectable reflector) {
     _logger.finest("******************************");
     _logger.fine(
         "Annotated classes of $reflector: ${reflector.annotatedClasses.length}");
