@@ -17,7 +17,7 @@ abstract class Loggable {
         _logger = new Logger("dartregistry.logging.Loggable");
 
         _logger.warning(
-            "Can't find a logger for $this. Override createLogger() method on ${this.runtimeType}");
+            "Can't find a logger for $this. Annotate the class ${this.runtimeType} with @injectable annotation or override createLogger() method and provide a Logger");
       }
     }
     return _logger;
