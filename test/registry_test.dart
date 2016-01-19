@@ -11,21 +11,20 @@ import "package:logging/logging.dart";
 
 final _libraryLogger = new Logger("test");
 
-@injectable
 class TestModule extends RegistryModule {
   static const SCOPE = const Scope("NUOVO");
 
   @override
-  Future configure(Map<String, dynamic> parameters) =>
-      super.configure(parameters).then((_) {
-        _libraryLogger.info("Configure");
+  Future configure() async {
+    _libraryLogger.info("Configure");
+    await super.configure();
 
-        bindClass(LogService, Scope.ISOLATE);
-        bindClass(MyService, Scope.ISOLATE, MyServiceImpl);
-        bindClass(InjectService, SCOPE, InjectServiceImpl);
-        bindProvider(String, Scope.ISOLATE, new StringProvider("ECCOLO"));
-        bindProvider(DateTime, Scope.ISOLATE, new DateProvider());
-      });
+    bindClass(LogService, Scope.ISOLATE);
+    bindClass(MyService, Scope.ISOLATE, MyServiceImpl);
+    bindClass(InjectService, SCOPE, InjectServiceImpl);
+    bindProvider(String, Scope.ISOLATE, new StringProvider("ECCOLO"));
+    bindProvider(DateTime, Scope.ISOLATE, new DateProvider());
+  }
 }
 
 test() async {
@@ -105,16 +104,16 @@ class DateProvider extends Provider<Future<DateTime>> {
   void postProvidedBind(Future future) {
     _libraryLogger.info("DateProvider postProvidedBind");
 
-    future.then(
-        (date) => _libraryLogger.info("DateProvider postProvidedBind finish: $date"));
+    future.then((date) =>
+        _libraryLogger.info("DateProvider postProvidedBind finish: $date"));
   }
 
   @onProvidedUnbinding
   void preProvidedUnbind(Future future) {
     _libraryLogger.info("DateProvider preProvidedUnbind");
 
-    future.then(
-        (date) => _libraryLogger.info("DateProvider preProvidedUnbind finish: $date"));
+    future.then((date) =>
+        _libraryLogger.info("DateProvider preProvidedUnbind finish: $date"));
   }
 }
 
@@ -231,7 +230,7 @@ main() async {
 
   _libraryLogger.info("Inizio");
 
-  await Registry.load(TestModule);
+  await Registry.load(new TestModule());
 
   await Registry.openScope(Scope.ISOLATE);
 

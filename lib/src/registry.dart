@@ -1,4 +1,4 @@
-library dartregistry.dartregistry;
+library dartregistry.registry;
 
 import "dart:async";
 
@@ -8,227 +8,21 @@ import "package:stack_trace/stack_trace.dart";
 @GlobalQuantifyCapability(r"^dart.async.Future$", injectable)
 import 'package:reflectable/reflectable.dart';
 
-final Logger _libraryLogger = new Logger("dartregistry.dartregistry");
+import "annotations.dart";
+import "common.dart";
+import "module.dart";
+
+part "internal/registry.dart";
 
 const String _FUTURE_TYPE_NAME = "dart.async.Future";
-const String _PROVIDER_TYPE_NAME = "dartregistry.dartregistry.Provider";
+const String _PROVIDER_TYPE_NAME = "dartregistry.common.Provider";
 const String _FUNCTION_PROVIDER_TYPE_NAME =
-    "dartregistry.dartregistry.ProvideFunction";
-
-const Injectable injectable = const Injectable();
-const Inject inject = const Inject();
-
-class Injectable extends Reflectable {
-  const Injectable()
-      : super(
-            metadataCapability,
-            typeRelationsCapability,
-            declarationsCapability,
-            instanceInvokeCapability,
-            newInstanceCapability);
-}
-
-@injectable
-class Inject {
-  final Type type;
-
-  const Inject([this.type]);
-}
-
-const onScopeOpened = const OnScopeOpened();
-const onScopeClosing = const OnScopeClosing();
-
-@injectable
-class OnScopeOpened {
-  const OnScopeOpened();
-}
-
-@injectable
-class OnScopeClosing {
-  const OnScopeClosing();
-}
-
-const onBind = const OnBind();
-const onUnbinding = const OnUnbinding();
-
-@injectable
-class OnBind {
-  const OnBind();
-}
-
-@injectable
-class OnUnbinding {
-  const OnUnbinding();
-}
-
-const onProvidedBind = const OnProvidedBind();
-const onProvidedUnbinding = const OnProvidedUnbinding();
-
-@injectable
-class OnProvidedBind {
-  const OnProvidedBind();
-}
-
-@injectable
-class OnProvidedUnbinding {
-  const OnProvidedUnbinding();
-}
-
-typedef T ProvideFunction<T>();
-
-typedef ScopeRunnable();
-
-@injectable
-abstract class Provider<T> {
-  T get();
-}
-
-class Scope {
-  static const Scope NONE = const Scope("NONE");
-  static const Scope ISOLATE = const Scope("ISOLATE");
-
-  final String id;
-
-  const Scope(this.id);
-
-  String toString() => this.id;
-}
-
-@injectable
-abstract class Loggable {
-  Logger _logger;
-
-  Logger get logger {
-    if (_logger == null) {
-      _logger = createLogger() ?? Logger.root;
-    }
-    return _logger;
-  }
-
-  Logger createLogger() {
-    var type = Registry._getInstanceType(this);
-    return type != null ? new Logger(Registry.getQualifiedName(type)) : null;
-  }
-
-  bool isLoggable(Level value) => logger.isLoggable(value);
-
-  void shout(message, [Object error, StackTrace stackTrace]) =>
-      logger.shout(message, error, stackTrace);
-
-  void severe(message, [Object error, StackTrace stackTrace]) =>
-      logger.severe(message, error, stackTrace);
-
-  void warning(message, [Object error, StackTrace stackTrace]) =>
-      logger.warning(message, error, stackTrace);
-
-  void info(message, [Object error, StackTrace stackTrace]) =>
-      logger.info(message, error, stackTrace);
-
-  void config(message, [Object error, StackTrace stackTrace]) =>
-      logger.config(message, error, stackTrace);
-
-  void fine(message, [Object error, StackTrace stackTrace]) =>
-      logger.fine(message, error, stackTrace);
-
-  void finer(message, [Object error, StackTrace stackTrace]) =>
-      logger.finer(message, error, stackTrace);
-
-  void finest(message, [Object error, StackTrace stackTrace]) =>
-      logger.finest(message, error, stackTrace);
-}
-
-class LogPrintHandler {
-  void call(LogRecord logRecord) {
-    print(
-        '[${logRecord.level.name}: ${logRecord.loggerName}] ${logRecord.time}: ${logRecord.message}');
-    if (logRecord.error != null) {
-      print(logRecord.error);
-    }
-    if (logRecord.stackTrace != null) {
-      print(Trace.format(logRecord.stackTrace));
-    }
-  }
-}
-
-class BufferedLogHandler {
-  Level printLevel;
-  StringBuffer _buffer;
-
-  BufferedLogHandler(this._buffer, this.printLevel);
-
-  void call(LogRecord logRecord) {
-    var alsoPrint = logRecord.level >= this.printLevel;
-
-    _append('${logRecord.level.name}: ${logRecord.time}: ${logRecord.message}',
-        alsoPrint: alsoPrint);
-    if (logRecord.error != null) {
-      _append(logRecord.error, alsoPrint: alsoPrint);
-    }
-    if (logRecord.stackTrace != null) {
-      _append(Trace.format(logRecord.stackTrace), alsoPrint: alsoPrint);
-    }
-  }
-
-  void _append(msg, {alsoPrint: true}) {
-    if (alsoPrint) {
-      print(msg);
-    }
-    _buffer.writeln(msg);
-  }
-}
-
-abstract class RegistryModule extends Loggable {
-  Map<Type, _ProviderBinding> _bindings;
-
-  Future configure() async {
-    _bindings = {};
-  }
-
-  Future unconfigure() async {
-    _bindings.clear();
-    _bindings = null;
-  }
-
-  void onBindingAdded(Type clazz) {}
-
-  void bindInstance(Type clazz, instance) {
-    _addProviderBinding(
-        clazz,
-        new _ProviderBinding(
-            clazz, Scope.ISOLATE, new ToInstanceProvider(instance)));
-  }
-
-  void bindClass(Type clazz, Scope scope, [Type clazzImpl]) {
-    clazzImpl = clazzImpl != null ? clazzImpl : clazz;
-    _addProviderBinding(clazz,
-        new _ProviderBinding(clazz, scope, new ToClassProvider(clazzImpl)));
-  }
-
-  void bindProvideFunction(
-      Type clazz, Scope scope, ProvideFunction provideFunction) {
-    _addProviderBinding(
-        clazz,
-        new _ProviderBinding(
-            clazz, scope, new ToFunctionProvider(provideFunction)));
-  }
-
-  void bindProvider(Type clazz, Scope scope, Provider provider) {
-    _addProviderBinding(clazz, new _ProviderBinding(clazz, scope, provider));
-  }
-
-  void _addProviderBinding(Type clazz, _ProviderBinding binding) {
-    _bindings[clazz] = binding;
-
-    onBindingAdded(clazz);
-  }
-
-  _ProviderBinding _getProviderBinding(Type clazz) => _bindings[clazz];
-}
+    "dartregistry.common.ProvideFunction";
 
 class Registry {
   static const _SCOPE_CONTEXT_HOLDER = "_SCOPE_CONTEXT_HOLDER";
 
-  static Logger _logger = new Logger("${_libraryLogger.fullName}.Registry");
+  static Logger _logger = new Logger("dartregistry.registry.Registry");
 
   static RegistryModule _MODULE;
 
@@ -244,7 +38,7 @@ class Registry {
       new Map.identity();
 
   static final Map<Scope,
-          Map<Type, Map<Type, _BindingListeners>>> _scopeListeners =
+          Map<Type, Map<Type, BindingListeners>>> _scopeListeners =
       new Map.identity();
 
   static final Map<Type,
@@ -330,7 +124,7 @@ class Registry {
       await _notifyPreUnbindListeners(provider, scope);
     });
 
-    await _notifyPreClosingListeners(scopeContext._scope);
+    await _notifyPreClosingListeners(scopeContext.scope);
 
     if (holder != null && holder.isHolding) {
       holder.unhold();
@@ -374,7 +168,8 @@ class Registry {
       throw new StateError("Registry module not loaded");
     }
 
-    _ProviderBinding providerBinding = _MODULE._getProviderBinding(clazz);
+    ProviderBinding providerBinding =
+        RegistryModuleInternal.getProviderBinding(_MODULE, clazz);
     if (providerBinding != null) {
       ProvideFunction scopedProvider = _SCOPED_PROVIDERS_CACHE[clazz];
       if (scopedProvider == null) {
@@ -416,6 +211,13 @@ class Registry {
       [Map<Symbol, dynamic> namedArguments]) {
     var instanceMirror = _getInstanceMirror(instance);
     return instanceMirror.invoke(method, positionalArguments, namedArguments);
+  }
+
+  static Type getInstanceType(instance) {
+    var instanceMirror = _getInstanceMirror(instance);
+    return instanceMirror != null
+        ? _getReflectedType(instanceMirror.type)
+        : null;
   }
 
   static String getSimpleName(Type clazz) {
@@ -552,7 +354,8 @@ class Registry {
   }
 
   static void _injectProviders() {
-    for (var providerBinding in _MODULE._bindings.values) {
+    for (var providerBinding
+        in RegistryModuleInternal.getBindings(_MODULE).values) {
       _injectBindings(providerBinding.provider);
     }
   }
@@ -564,7 +367,7 @@ class Registry {
 
     if (instanceMirror != null) {
       var declarations =
-          _getAllVariablesAnnotatedWith(_getInstanceType(instance), Inject);
+          _getAllVariablesAnnotatedWith(getInstanceType(instance), Inject);
 
       for (VariableMirror declaration in declarations) {
         var injectAnnotations = _getDeclarationAnnotations(declaration, Inject);
@@ -694,14 +497,14 @@ class Registry {
         listeners, (listener) => providerMirror.invoke(listener, [instance]));
   }
 
-  static Future _notifyScopeListeners(Map<Type, _BindingListeners> listeners,
-      Scope scope, bool reversed) async {
+  static Future _notifyScopeListeners(
+      Map<Type, BindingListeners> listeners, Scope scope, bool reversed) async {
     Iterable keys = reversed
         ? new List.from(listeners.keys, growable: false).reversed
         : listeners.keys;
 
     await Future.forEach(keys, (clazz) async {
-      _BindingListeners bindingListeners = listeners[clazz];
+      BindingListeners bindingListeners = listeners[clazz];
 
       var providerMirror = bindingListeners.providerListeners.isNotEmpty
           ? _getInstanceMirror(bindingListeners.provider)
@@ -723,14 +526,14 @@ class Registry {
   }
 
   static List<String> _getInstanceListeners(instance, Type bindType) {
-    var instanceType = _getInstanceType(instance);
+    var instanceType = getInstanceType(instance);
 
     return instanceType != null
         ? _getTypeListeners(instanceType, bindType)
         : [];
   }
 
-  static Map<Type, _BindingListeners> _getScopeListeners(
+  static Map<Type, BindingListeners> _getScopeListeners(
       Scope scope, Type bindType) {
     var bindListeners = _scopeListeners[scope];
     if (bindListeners == null) {
@@ -745,14 +548,14 @@ class Registry {
       _logger.finest("Get $bindType listeners on scope $scope");
 
       listeners = {};
-      _MODULE?._bindings?.forEach((clazz, binding) {
+      RegistryModuleInternal.getBindings(_MODULE)?.forEach((clazz, binding) {
         if (binding.scope == scope) {
           var instanceListeners =
               _getInstanceListeners(binding.provider, bindType);
           for (var symbol in instanceListeners) {
-            _BindingListeners bindingListeners = listeners[clazz];
+            BindingListeners bindingListeners = listeners[clazz];
             if (bindingListeners == null) {
-              bindingListeners = new _BindingListeners(binding.provider);
+              bindingListeners = new BindingListeners(binding.provider);
               listeners[clazz] = bindingListeners;
             }
             bindingListeners.providerListeners.add(symbol);
@@ -760,18 +563,18 @@ class Registry {
 
           var target;
           if (binding.provider is ToInstanceProvider) {
-            target = _getInstanceType(binding.provider._instance);
+            target = getInstanceType(binding.provider.instance);
           } else if (binding.provider is ToClassProvider) {
-            target = binding.provider._clazz;
+            target = binding.provider.clazz;
           } else {
             target = clazz;
           }
 
           var typeListeners = _getTypeListeners(target, bindType);
           for (var symbol in typeListeners) {
-            _BindingListeners bindingListeners = listeners[clazz];
+            BindingListeners bindingListeners = listeners[clazz];
             if (bindingListeners == null) {
-              bindingListeners = new _BindingListeners(binding.provider);
+              bindingListeners = new BindingListeners(binding.provider);
               listeners[clazz] = bindingListeners;
             }
             bindingListeners.instanceListeners.add(symbol);
@@ -788,13 +591,6 @@ class Registry {
     return getAllMethodsAnnotatedWith(type, bindType)
         .map((mirror) => mirror.simpleName)
         .toList(growable: false);
-  }
-
-  static Type _getInstanceType(instance) {
-    var instanceMirror = _getInstanceMirror(instance);
-    return instanceMirror != null
-        ? _getReflectedType(instanceMirror.type)
-        : null;
   }
 
   static List _getMetadataOfType(List metadata, [Type annotationType]) {
@@ -909,56 +705,6 @@ class Registry {
   }
 }
 
-class _ScopeContext {
-  final Scope _scope;
-
-  final Map<Provider, dynamic> _bindings = {};
-
-  _ScopeContext(this._scope);
-
-  Scope get scope => _scope;
-
-  Map<Provider, dynamic> get bindings => _bindings;
-}
-
-@injectable
-class ToFunctionProvider<T> extends Provider<T> {
-  final ProvideFunction<T> _function;
-
-  ToFunctionProvider(this._function);
-
-  T get() => _function();
-}
-
-@injectable
-class ToClassProvider<T> extends Provider<T> {
-  final Type _clazz;
-
-  ToClassProvider(this._clazz);
-
-  T get() =>
-      (Registry._getTypeMirror(_clazz) as ClassMirror).newInstance("", []);
-}
-
-@injectable
-class ToInstanceProvider<T> extends Provider<T> {
-  final T _instance;
-
-  ToInstanceProvider(this._instance);
-
-  T get() => this._instance;
-}
-
-class _ProviderBinding {
-  final Type clazz;
-
-  final Scope scope;
-
-  final Provider provider;
-
-  _ProviderBinding(this.clazz, this.scope, this.provider);
-}
-
 class _ScopeContextHolder {
   _ScopeContext _scopeContext;
 
@@ -978,9 +724,14 @@ class _ScopeContextHolder {
   }
 }
 
-class _BindingListeners {
-  final Provider provider;
-  final List<String> providerListeners = [];
-  final List<String> instanceListeners = [];
-  _BindingListeners(this.provider);
+class _ScopeContext {
+  final Scope _scope;
+
+  final Map<Provider, dynamic> _bindings = {};
+
+  _ScopeContext(this._scope);
+
+  Scope get scope => _scope;
+
+  Map<Provider, dynamic> get bindings => _bindings;
 }

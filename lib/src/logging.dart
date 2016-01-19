@@ -1,12 +1,10 @@
 library dartregistry.logging;
 
-import "dart:async";
-
 import "package:logging/logging.dart";
 import "package:stack_trace/stack_trace.dart";
 
-@GlobalQuantifyCapability(r"^dart.async.Future$", injectable)
-import 'package:reflectable/reflectable.dart';
+import "annotations.dart";
+import "registry.dart";
 
 @injectable
 abstract class Loggable {
@@ -20,7 +18,7 @@ abstract class Loggable {
   }
 
   Logger createLogger() {
-    var type = Registry._getInstanceType(this);
+    var type = Registry.getInstanceType(this);
     return type != null ? new Logger(Registry.getQualifiedName(type)) : null;
   }
 
