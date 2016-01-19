@@ -2,6 +2,8 @@ library dartregistry.common;
 
 import "annotations.dart";
 
+part "internal/common.dart";
+
 typedef ScopeRunnable();
 
 typedef T ProvideFunction<T>();
@@ -19,5 +21,35 @@ class Scope {
 
   const Scope(this.id);
 
-  String toString() => this.id;
+  String toString() => id;
+}
+
+class ClassDescriptor {
+  final Type type;
+
+  final String simpleName;
+
+  final String qualifiedName;
+
+  List annotations;
+
+  ClassDescriptor._(
+      this.type, this.simpleName, this.qualifiedName, this.annotations);
+
+  String toString() => qualifiedName;
+}
+
+class MethodDescriptor {
+  final ClassDescriptor classDescriptor;
+
+  final String name;
+
+  final List annotations;
+
+  final int parametersCount;
+
+  MethodDescriptor._(
+      this.classDescriptor, this.name, this.parametersCount, this.annotations);
+
+  String toString() => "$classDescriptor.$name";
 }

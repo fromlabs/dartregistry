@@ -5,7 +5,7 @@ import "dart:async";
 import "package:logging/logging.dart";
 import "package:stack_trace/stack_trace.dart";
 
-@GlobalQuantifyCapability(r"^dart.async.Future$", injectable)
+@GlobalQuantifyCapability(r"^(dart.async.Future|logging.Logger)$", injectable)
 import 'package:reflectable/reflectable.dart';
 
 import "annotations.dart";
@@ -207,114 +207,93 @@ class Registry {
       _notifyScopeListeners(
           _getScopeListeners(scope, bindType), scope, reversed);
 
-  static Object invokeMethod(instance, String method, List positionalArguments,
-      [Map<Symbol, dynamic> namedArguments]) {
+  static ClassDescriptor getInstanceClass(instance) {
     var instanceMirror = _getInstanceMirror(instance);
-    return instanceMirror.invoke(method, positionalArguments, namedArguments);
+
+    if (instanceMirror != null) {
+      return _getClass(instanceMirror.type);
+    } else {
+      return null;
+    }
   }
 
-  static Type getInstanceType(instance) {
-    var instanceMirror = _getInstanceMirror(instance);
-    return instanceMirror != null
-        ? _getReflectedType(instanceMirror.type)
-        : null;
+  static ClassDescriptor getClass(Type type) {
+    var typeMirror = _getTypeMirror(type);
+
+    if (typeMirror != null) {
+      return _getClass(typeMirror);
+    } else {
+      return null;
+    }
   }
 
-  static String getSimpleName(Type clazz) {
-    var mirror = _getTypeMirror(clazz);
+  static List<MethodDescriptor> getAllMethodsAnnotatedWith(
+      ClassDescriptor classDescriptor, Type annotationType) {
+    var methods = {};
 
-    return mirror?.simpleName;
+    _getAllMethodsAnnotatedWith(classDescriptor.type, annotationType).forEach(
+        (methodMirror) => methods.putIfAbsent(methodMirror.simpleName, () {
+              var annotations = _getMethodAnnotations(
+                  classDescriptor.type, methodMirror.simpleName);
+
+              return CommonInternal.newMethodDescriptor(
+                  classDescriptor,
+                  methodMirror.simpleName,
+                  methodMirror.parameters.length,
+                  annotations);
+            }));
+
+    return methods.values.toList(growable: false);
   }
 
-  static String getQualifiedName(Type clazz) {
-    var mirror = _getTypeMirror(clazz);
+  static bool isClassAnnotatedWith(
+          ClassDescriptor descriptor, Type annotationType) =>
+      getClassAnnotationsWith(descriptor, annotationType).isNotEmpty;
 
-    return mirror?.qualifiedName;
-  }
-
-  static bool isTypeAnnotatedWith(Type clazz, Type annotationType) {
-    return _getTypeAnnotations(clazz, annotationType).isNotEmpty;
-  }
+  static List getClassAnnotationsWith(
+          ClassDescriptor descriptor, Type annotationType) =>
+      _getMetadataOfType(descriptor.annotations, annotationType);
 
   static bool isMethodAnnotatedWith(
-      Type clazz, String method, Type annotationType) {
-    return getMethodAnnotations(clazz, method, annotationType).isNotEmpty;
-  }
+          MethodDescriptor descriptor, Type annotationType) =>
+      getMethodAnnotationsWith(descriptor, annotationType).isNotEmpty;
 
-  static List getMethodAnnotations(Type clazz, String method,
-      [Type annotationType]) {
-    var metadata = [];
+  static List getMethodAnnotationsWith(
+          MethodDescriptor descriptor, Type annotationType) =>
+      _getMetadataOfType(descriptor.annotations, annotationType);
 
-    getAllMethodsAnnotatedWith(clazz, annotationType)
-        .where((MethodMirror mirror) => mirror.simpleName == method)
-        .forEach((MethodMirror mirror) => metadata.addAll(mirror.metadata));
+  static Object invokeMethod(
+          instance, MethodDescriptor method, List positionalArguments,
+          [Map<Symbol, dynamic> namedArguments]) =>
+      _getInstanceMirror(instance)
+          .invoke(method.name, positionalArguments, namedArguments);
 
-    return metadata;
-  }
-
-  static List<MethodMirror> getAllMethodsAnnotatedWith(
-      Type clazz, Type annotationType) {
-    return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
-        .where((declaration) => declaration is MethodMirror)
-        .toList(growable: false);
-  }
-
-  static bool _isDeclarationAnnotatedWith(
-      DeclarationMirror mirror, Type annotationType) {
-    return _getDeclarationAnnotations(mirror, annotationType).isNotEmpty;
-  }
-
-  static List _getDeclarationAnnotations(DeclarationMirror mirror,
-      [Type annotationType]) {
-    return _getMetadataOfType(mirror.metadata, annotationType);
-  }
-
-  static List _getTypeAnnotations(Type clazz, [Type annotationType]) {
+  static List _getTypeAnnotations(Type clazz) {
     var mirrors = _getClassMirrorHierarchy(clazz);
 
     var annotations = [];
 
     for (var mirror in mirrors) {
-      annotations.addAll(_getMetadataOfType(mirror.metadata, annotationType));
+      annotations.addAll(_getMetadataOfType(mirror.metadata));
     }
 
     return annotations;
   }
 
-  static List<VariableMirror> _getAllVariablesAnnotatedWith(
-      Type clazz, Type annotationType) {
-    return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
-        .where((declaration) => declaration is VariableMirror)
-        .toList(growable: false);
-  }
+  static List _getMethodAnnotations(Type clazz, String method,
+      [Type annotationType]) {
+    var mirrors = _getClassMirrorHierarchy(clazz);
 
-  static List<DeclarationMirror> _getAllDeclarationsAnnotatedWith(
-      Type clazz, Type annotationType) {
-    var typeDeclarations = _allAnnotatedDeclarations[clazz];
-    if (typeDeclarations == null) {
-      typeDeclarations = new Map.identity();
-      _allAnnotatedDeclarations[clazz] = typeDeclarations;
-    }
+    var annotations = [];
 
-    var declarations;
-    if (typeDeclarations.containsKey(annotationType)) {
-      declarations = typeDeclarations[annotationType];
-    } else {
-      _logger.finest("Get $annotationType declarations on class $clazz");
-
-      declarations = [];
-      var classMirrors = _getClassMirrorHierarchy(clazz);
-      for (var classMirror in classMirrors) {
-        classMirror.declarations.forEach((name, DeclarationMirror mirror) {
-          if (_isDeclarationAnnotatedWith(mirror, annotationType)) {
-            declarations.add(mirror);
-          }
-        });
+    for (var mirror in mirrors) {
+      var methodMirror = mirror.declarations[method];
+      if (methodMirror != null) {
+        annotations.addAll(_getMetadataOfType(methodMirror.metadata));
       }
-
-      typeDeclarations[annotationType] = declarations;
     }
-    return declarations;
+
+    return annotations;
   }
 
   static _ScopeContext _getScopeContext(Scope scope) {
@@ -367,7 +346,7 @@ class Registry {
 
     if (instanceMirror != null) {
       var declarations =
-          _getAllVariablesAnnotatedWith(getInstanceType(instance), Inject);
+          _getAllVariablesAnnotatedWith(_getInstanceType(instance), Inject);
 
       for (VariableMirror declaration in declarations) {
         var injectAnnotations = _getDeclarationAnnotations(declaration, Inject);
@@ -526,7 +505,7 @@ class Registry {
   }
 
   static List<String> _getInstanceListeners(instance, Type bindType) {
-    var instanceType = getInstanceType(instance);
+    var instanceType = _getInstanceType(instance);
 
     return instanceType != null
         ? _getTypeListeners(instanceType, bindType)
@@ -563,7 +542,7 @@ class Registry {
 
           var target;
           if (binding.provider is ToInstanceProvider) {
-            target = getInstanceType(binding.provider.instance);
+            target = _getInstanceType(binding.provider.instance);
           } else if (binding.provider is ToClassProvider) {
             target = binding.provider.clazz;
           } else {
@@ -588,32 +567,29 @@ class Registry {
   }
 
   static List<String> _getTypeListeners(Type type, Type bindType) {
-    return getAllMethodsAnnotatedWith(type, bindType)
+    return _getAllMethodsAnnotatedWith(type, bindType)
         .map((mirror) => mirror.simpleName)
         .toList(growable: false);
   }
 
-  static List _getMetadataOfType(List metadata, [Type annotationType]) {
-    var filterTypeMirror =
-        annotationType != null ? _getTypeMirror(annotationType) : null;
+  static ClassDescriptor _getClass(TypeMirror typeMirror) {
+    var type = _getReflectedType(typeMirror);
 
-    if (filterTypeMirror != null) {
-      return metadata.where((annotation) {
-        if (injectable.canReflect(annotation)) {
-          var annotationMirror = injectable.reflect(annotation);
-          var annotationTypeMirror = annotationMirror.type;
+    if (type != null) {
+      var annotations = _getTypeAnnotations(type);
 
-          return _isGenericTypeOf(
-              annotationTypeMirror, filterTypeMirror.qualifiedName);
-        } else {
-          return false;
-        }
-      }).toList(growable: false);
-    } else if (annotationType == null) {
-      return metadata;
+      return CommonInternal.newClassDescriptor(
+          type, typeMirror.simpleName, typeMirror.qualifiedName, annotations);
     } else {
-      return [];
+      return null;
     }
+  }
+
+  static Type _getInstanceType(instance) {
+    var instanceMirror = _getInstanceMirror(instance);
+    return instanceMirror != null
+        ? _getReflectedType(instanceMirror.type)
+        : null;
   }
 
   static Type _getReflectedType(TypeMirror typeMirror) {
@@ -686,6 +662,82 @@ class Registry {
   static bool _isGenericTypeOf(TypeMirror typeMirror, String genericType) {
     // TODO per semplicità vado puntuale sui nodi (ci sono problemi con reflectable in dart2js nel recupero del reflectedType di tipi con generici)
     return typeMirror.qualifiedName == genericType;
+  }
+
+  static List<MethodMirror> _getAllMethodsAnnotatedWith(
+      Type clazz, Type annotationType) {
+    return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
+        .where((declaration) => declaration is MethodMirror)
+        .toList(growable: false);
+  }
+
+  static List<VariableMirror> _getAllVariablesAnnotatedWith(
+      Type clazz, Type annotationType) {
+    return _getAllDeclarationsAnnotatedWith(clazz, annotationType)
+        .where((declaration) => declaration is VariableMirror)
+        .toList(growable: false);
+  }
+
+  static List<DeclarationMirror> _getAllDeclarationsAnnotatedWith(
+      Type clazz, Type annotationType) {
+    var typeDeclarations = _allAnnotatedDeclarations[clazz];
+    if (typeDeclarations == null) {
+      typeDeclarations = new Map.identity();
+      _allAnnotatedDeclarations[clazz] = typeDeclarations;
+    }
+
+    var declarations;
+    if (typeDeclarations.containsKey(annotationType)) {
+      declarations = typeDeclarations[annotationType];
+    } else {
+      _logger.finest("Get $annotationType declarations on class $clazz");
+
+      declarations = [];
+      var classMirrors = _getClassMirrorHierarchy(clazz);
+      for (var classMirror in classMirrors) {
+        classMirror.declarations.forEach((name, DeclarationMirror mirror) {
+          if (_isDeclarationAnnotatedWith(mirror, annotationType)) {
+            declarations.add(mirror);
+          }
+        });
+      }
+
+      typeDeclarations[annotationType] = declarations;
+    }
+    return declarations;
+  }
+
+  static bool _isDeclarationAnnotatedWith(
+      DeclarationMirror mirror, Type annotationType) {
+    return _getDeclarationAnnotations(mirror, annotationType).isNotEmpty;
+  }
+
+  static List _getDeclarationAnnotations(DeclarationMirror mirror,
+      [Type annotationType]) {
+    return _getMetadataOfType(mirror.metadata, annotationType);
+  }
+
+  static List _getMetadataOfType(List metadata, [Type annotationType]) {
+    var filterTypeMirror =
+        annotationType != null ? _getTypeMirror(annotationType) : null;
+
+    if (filterTypeMirror != null) {
+      return metadata.where((annotation) {
+        if (injectable.canReflect(annotation)) {
+          var annotationMirror = injectable.reflect(annotation);
+          var annotationTypeMirror = annotationMirror.type;
+
+          return _isGenericTypeOf(
+              annotationTypeMirror, filterTypeMirror.qualifiedName);
+        } else {
+          return false;
+        }
+      }).toList(growable: false);
+    } else if (annotationType == null) {
+      return metadata;
+    } else {
+      return [];
+    }
   }
 
   static void _logReflector(Reflectable reflector) {

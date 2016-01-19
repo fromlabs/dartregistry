@@ -2,7 +2,7 @@ library dartregistry.module;
 
 import "dart:async";
 
-import"package:reflectable/reflectable.dart";
+import "package:reflectable/reflectable.dart";
 
 import "common.dart";
 import "annotations.dart";
@@ -11,6 +11,7 @@ import "registry.dart";
 
 part "internal/module.dart";
 
+@injectable
 abstract class RegistryModule extends Loggable {
   Map<Type, ProviderBinding> _bindings;
 
@@ -34,8 +35,13 @@ abstract class RegistryModule extends Loggable {
 
   void bindClass(Type clazz, Scope scope, [Type clazzImpl]) {
     clazzImpl = clazzImpl != null ? clazzImpl : clazz;
-    _addProviderBinding(clazz,
-        new ProviderBinding(clazz, scope, new ToClassProvider(clazzImpl, (RegistryInternal.getTypeMirror(clazzImpl) as ClassMirror))));
+    _addProviderBinding(
+        clazz,
+        new ProviderBinding(
+            clazz,
+            scope,
+            new ToClassProvider(clazzImpl,
+                (RegistryInternal.getTypeMirror(clazzImpl) as ClassMirror))));
   }
 
   void bindProvideFunction(

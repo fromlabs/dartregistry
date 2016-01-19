@@ -18,8 +18,10 @@ abstract class Loggable {
   }
 
   Logger createLogger() {
-    var type = Registry.getInstanceType(this);
-    return type != null ? new Logger(Registry.getQualifiedName(type)) : null;
+    var classDescriptor = Registry.getInstanceClass(this);
+    return classDescriptor != null
+        ? new Logger(classDescriptor.qualifiedName)
+        : null;
   }
 
   bool isLoggable(Level value) => logger.isLoggable(value);
