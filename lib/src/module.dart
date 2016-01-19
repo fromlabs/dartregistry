@@ -1,7 +1,5 @@
 library dartregistry.module;
 
-import "dart:async";
-
 import "package:reflectable/reflectable.dart";
 
 import "common.dart";
@@ -15,14 +13,9 @@ part "internal/module.dart";
 abstract class RegistryModule extends Loggable {
   Map<Type, ProviderBinding> _bindings;
 
-  Future configure() async {
-    _bindings = {};
-  }
+  void configure();
 
-  Future unconfigure() async {
-    _bindings.clear();
-    _bindings = null;
-  }
+  void unconfigure() {}
 
   void onBindingAdded(Type clazz) {}
 
@@ -54,6 +47,19 @@ abstract class RegistryModule extends Loggable {
 
   void bindProvider(Type clazz, Scope scope, Provider provider) {
     _addProviderBinding(clazz, new ProviderBinding(clazz, scope, provider));
+  }
+
+  void _configure() {
+    _bindings = {};
+
+    configure();
+  }
+
+  void _unconfigure() {
+    unconfigure();
+
+    _bindings.clear();
+    _bindings = null;
   }
 
   void _addProviderBinding(Type clazz, ProviderBinding binding) {

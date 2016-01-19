@@ -1,6 +1,10 @@
 part of dartregistry.module;
 
 class RegistryModuleInternal {
+  static void configure(RegistryModule module) => module._configure();
+
+  static void unconfigure(RegistryModule module) => module._unconfigure();
+
   static Map<Type, ProviderBinding> getBindings(RegistryModule module) =>
       module?._bindings;
 

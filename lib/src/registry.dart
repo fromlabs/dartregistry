@@ -46,8 +46,8 @@ class Registry {
           Map<Type, List<DeclarationMirror>>> _allAnnotatedDeclarations =
       new Map.identity();
 
-  static Future load(RegistryModule module) => _singleton._load(module);
-  static Future unload() => _singleton._unload();
+  static void load(RegistryModule module) => _singleton._load(module);
+  static void unload() => _singleton._unload();
 
   static Future openScope(Scope scope) => _singleton._openScope(scope);
   static Future closeScope(Scope scope) => _singleton._closeScope(scope);
@@ -88,7 +88,7 @@ class Registry {
       _singleton._invokeMethod(
           instance, method, positionalArguments, namedArguments);
 
-  Future _load(RegistryModule module) async {
+  void _load(RegistryModule module) {
     _logger.finest("Load registry module: $module");
 
     _logReflector(injectable);
@@ -97,16 +97,16 @@ class Registry {
 
     _SCOPED_PROVIDERS_CACHE = {};
 
-    await _MODULE.configure();
+    RegistryModuleInternal.configure(_MODULE);
 
     _injectProviders();
   }
 
-  Future _unload() async {
+  void _unload() {
     _logger.finest("Unload module");
 
     try {
-      await _MODULE.unconfigure();
+      RegistryModuleInternal.unconfigure(_MODULE);
     } finally {
       _MODULE = null;
       _SCOPED_PROVIDERS_CACHE = null;
@@ -431,11 +431,17 @@ class Registry {
             _logger.finest("Injecting $boundType");
 
             // TODO verificare quando dart2js offrirà il supporto ai typedef con generici
-            throw new UnsupportedError("Provide function injection");
-/*
+            // throw new UnsupportedError("Provide function injection");
+
+            _logger.warning(
+                "*******************************************************************");
+            _logger.warning(
+                "*** Provide function injection is not supported yet in Dart2JS! ***");
+            _logger.warning(
+                "*******************************************************************");
+
             instanceMirror.invokeSetter(
                 name, Registry.lookupProvideFunction(boundType));
-*/
           } else {
             throw new ArgumentError();
           }

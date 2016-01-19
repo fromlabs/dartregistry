@@ -12,7 +12,13 @@ abstract class Loggable {
 
   Logger get logger {
     if (_logger == null) {
-      _logger = createLogger() ?? Logger.root;
+      _logger = createLogger();
+      if (_logger == null) {
+        _logger = new Logger("dartregistry.logging.Loggable");
+
+        _logger.warning(
+            "Can't find a logger for $this. Override createLogger() method on ${this.runtimeType}");
+      }
     }
     return _logger;
   }
