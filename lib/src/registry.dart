@@ -176,17 +176,19 @@ class Registry {
     }
   }
 
-  _runInScope(Scope scope, ScopeRunnable runnable) => runZoned(
-      () => Chain.capture(() async {
-            await openScope(scope);
-            var result = await runnable();
-            await closeScope(scope);
+  _runInScope(Scope scope, ScopeRunnable runnable) => runZoned(() async {
+        try {
+          await openScope(scope);
 
-            return result;
-          }, onError: (error, Chain chain) {
-            _logger.severe("Running in scope error", error, chain);
-          }),
-      zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
+          return await runnable();
+        } finally {
+          try {
+            await closeScope(scope);
+          } catch (e, s) {
+            _logger.warning("Close scope error", e, s);
+          }
+        }
+      }, zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
 
   _lookupObject(Type clazz) {
     ProvideFunction provide = lookupProvideFunction(clazz);
