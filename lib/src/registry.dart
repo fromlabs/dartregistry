@@ -3,7 +3,6 @@ library dartregistry.registry;
 import "dart:async";
 
 import "package:logging/logging.dart";
-import "package:stack_trace/stack_trace.dart";
 
 @GlobalQuantifyCapability(r"^(dart.async.Future|logging.Logger)$", injectable)
 import 'package:reflectable/reflectable.dart';
@@ -144,51 +143,61 @@ class Registry {
   Future _closeScope(Scope scope) async {
     _logger.finest("Close scope ${scope}");
 
-    _ScopeContext scopeContext;
-
     _ScopeContextHolder holder = Zone.current[_SCOPE_CONTEXT_HOLDER];
-    if (holder != null && holder.isHolding) {
-      scopeContext = holder.held;
-    } else {
-      scopeContext = _ISOLATE_SCOPE_CONTEXT;
-    }
+
+    _ScopeContext scopeContext = holder != null && holder.isHolding
+        ? holder.held
+        : _ISOLATE_SCOPE_CONTEXT;
 
     if (scopeContext.scope != scope) {
       throw new StateError("Can't close not current scope: $scope");
     }
 
-    Map<Provider, dynamic> providers = scopeContext.bindings;
+    try {
+      Map<Provider, dynamic> providers = scopeContext.bindings;
 
-    await Future.forEach(providers.keys, (provider) async {
-      var instance = providers[provider];
+      await Future.forEach(providers.keys, (provider) async {
+        var instance = providers[provider];
 
-      await _notifyPreUnbindListeners(instance, scope);
-      await _notifyPreProvidedUnbindListeners(provider, instance, scope);
-      await _notifyPreUnbindListeners(provider, scope);
-    });
+        await _notifyPreUnbindListeners(instance, scope);
+        await _notifyPreProvidedUnbindListeners(provider, instance, scope);
+        await _notifyPreUnbindListeners(provider, scope);
+      });
 
-    await _notifyPreClosingListeners(scopeContext.scope);
-
-    if (holder != null && holder.isHolding) {
-      holder.unhold();
-    } else {
-      _ISOLATE_SCOPE_CONTEXT = null;
+      await _notifyPreClosingListeners(scopeContext.scope);
+    } finally {
+      if (holder != null && holder.isHolding) {
+        holder.unhold();
+      } else {
+        _ISOLATE_SCOPE_CONTEXT = null;
+      }
     }
   }
 
-  _runInScope(Scope scope, ScopeRunnable runnable) => runZoned(() async {
-        try {
-          await openScope(scope);
+  Future _runInScope(Scope scope, ScopeRunnable runnable) {
+    return runZoned(() async {
+      var isAlreadyInError = false;
+      try {
+        await openScope(scope);
 
-          return await runnable();
-        } finally {
-          try {
-            await closeScope(scope);
-          } catch (e, s) {
-            _logger.warning("Close scope error", e, s);
+        return await runnable();
+      } catch (e) {
+        isAlreadyInError = true;
+
+        rethrow;
+      } finally {
+        try {
+          await closeScope(scope);
+        } catch (e, s) {
+          if (isAlreadyInError) {
+            _logger.warning("Catched a close scope error", e, s);
+          } else {
+            rethrow;
           }
         }
-      }, zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
+      }
+    }, zoneValues: {_SCOPE_CONTEXT_HOLDER: new _ScopeContextHolder()});
+  }
 
   _lookupObject(Type clazz) {
     ProvideFunction provide = lookupProvideFunction(clazz);
@@ -532,22 +541,21 @@ class Registry {
     await Future.forEach(keys, (clazz) async {
       BindingListeners bindingListeners = listeners[clazz];
 
-      var providerMirror = bindingListeners.providerListeners.isNotEmpty
-          ? _getInstanceMirror(bindingListeners.provider)
-          : null;
+      if (bindingListeners.providerListeners.isNotEmpty) {
+        var providerMirror = _getInstanceMirror(bindingListeners.provider);
 
-      await Future.forEach(bindingListeners.providerListeners,
-          (listener) => providerMirror.invoke(listener, []));
+        await Future.forEach(bindingListeners.providerListeners,
+            (listener) => providerMirror.invoke(listener, []));
+      }
 
-      var instance = bindingListeners.instanceListeners.isNotEmpty
-          ? lookupObject(clazz)
-          : null;
+      if (bindingListeners.instanceListeners.isNotEmpty) {
+        var instanceMirror = _getInstanceMirror(lookupObject(clazz));
 
-      var instanceMirror =
-          instance != null ? _getInstanceMirror(instance) : null;
-
-      await Future.forEach(bindingListeners.instanceListeners,
-          (listener) => instanceMirror.invoke(listener, []));
+        if (instanceMirror != null) {
+          await Future.forEach(bindingListeners.instanceListeners,
+              (listener) => instanceMirror.invoke(listener, []));
+        }
+      }
     });
   }
 
