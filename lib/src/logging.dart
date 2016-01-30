@@ -1,7 +1,6 @@
 library dartregistry.logging;
 
 import "package:logging/logging.dart";
-import "package:stack_trace/stack_trace.dart";
 
 import "annotations.dart";
 import "registry.dart";
@@ -55,44 +54,4 @@ abstract class Loggable {
 
   void finest(message, [Object error, StackTrace stackTrace]) =>
       logger.finest(message, error, stackTrace);
-}
-
-class LogPrintHandler {
-  void call(LogRecord logRecord) {
-    print(
-        '[${logRecord.level.name}: ${logRecord.loggerName}] ${logRecord.time}: ${logRecord.message}');
-    if (logRecord.error != null) {
-      print(logRecord.error);
-    }
-    if (logRecord.stackTrace != null) {
-      print(Trace.format(logRecord.stackTrace));
-    }
-  }
-}
-
-class BufferedLogHandler {
-  Level printLevel;
-  StringBuffer _buffer;
-
-  BufferedLogHandler(this._buffer, this.printLevel);
-
-  void call(LogRecord logRecord) {
-    var alsoPrint = logRecord.level >= this.printLevel;
-
-    _append('${logRecord.level.name}: ${logRecord.time}: ${logRecord.message}',
-        alsoPrint: alsoPrint);
-    if (logRecord.error != null) {
-      _append(logRecord.error, alsoPrint: alsoPrint);
-    }
-    if (logRecord.stackTrace != null) {
-      _append(Trace.format(logRecord.stackTrace), alsoPrint: alsoPrint);
-    }
-  }
-
-  void _append(msg, {alsoPrint: true}) {
-    if (alsoPrint) {
-      print(msg);
-    }
-    _buffer.writeln(msg);
-  }
 }

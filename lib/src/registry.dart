@@ -53,6 +53,11 @@ class Registry {
   static runInScope(Scope scope, ScopeRunnable runnable) =>
       _singleton._runInScope(scope, runnable);
 
+  static Future openIsolateScope() => _singleton._openScope(Scope.ISOLATE);
+  static Future closeIsolateScope() => _singleton._closeScope(Scope.ISOLATE);
+  static runInIsolateScope(ScopeRunnable runnable) =>
+      _singleton._runInScope(Scope.ISOLATE, runnable);
+
   static lookupObject(Type clazz) => _singleton._lookupObject(clazz);
   static lookupProvider(Type clazz) => _singleton._lookupProvider(clazz);
   static ProvideFunction lookupProvideFunction(Type clazz) =>

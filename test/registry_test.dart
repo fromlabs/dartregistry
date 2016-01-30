@@ -220,7 +220,9 @@ abstract class BaseService extends Loggable {
 
 main() async {
   Logger.root.level = Level.ALL;
-  Logger.root.onRecord.listen(new LogPrintHandler());
+  Logger.root.onRecord.listen((record) {
+    print(record);
+  });
 
   Logger.root.info("Inizio");
 
