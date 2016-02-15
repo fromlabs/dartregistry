@@ -7,7 +7,7 @@ Currently the library supports advanced futures as providers, provider functions
 
 A simple usage example:
 
-    import "package:dartregistry/dart_registry.dart";
+    import "package:dartregistry/dartregistry.dart";
     
     @injectable
     class ExampleModule extends RegistryModule {
