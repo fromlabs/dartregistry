@@ -3,7 +3,7 @@ library test;
 @GlobalQuantifyCapability(r"^dart.core.(String|DateTime)$", injectable)
 import 'package:reflectable/reflectable.dart';
 
-import "package:dartregistry/dart_registry.dart";
+import "package:dartregistry/dartregistry.dart";
 
 import "dart:async";
 

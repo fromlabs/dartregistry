@@ -4,7 +4,7 @@ import "dart:async";
 
 import "package:logging/logging.dart";
 
-import "package:dartregistry/dart_registry.dart";
+import "package:dartregistry/dartregistry.dart";
 
 final Logger _libraryLogger = new Logger("example");
 
