@@ -135,8 +135,7 @@ class ConfigurationProvider extends Loggable
 
 @injectable
 class ConnectionManager extends Loggable {
-  // TODO
-  @Inject(Configuration)
+  @inject
   Future<Configuration> configuration;
 
   @onScopeOpened
@@ -197,8 +196,7 @@ abstract class ExampleService {
 
 @injectable
 class ExampleServiceImpl extends Loggable implements ExampleService {
-
-  @Inject(Connection)
+  @inject
   Provider<Connection> connectionProvider;
 
   Future<String> execute(String request) async {

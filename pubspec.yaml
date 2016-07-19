@@ -11,4 +11,5 @@ dependencies:
 transformers:
 - reflectable:
     entry_points:
-      - test/registry_test.dart
+      - web/registry_test.dart
+      - web/example.dart

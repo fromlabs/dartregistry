@@ -39,7 +39,7 @@ class PrintService extends Loggable {
 
 @injectable
 abstract class Printable {
-  @Inject(PrintService)
+  @inject
   Provider<PrintService> printServiceProvider;
 
   PrintService get printService => printServiceProvider.get();
@@ -170,6 +170,9 @@ class MyServiceImpl extends BaseService with Printable implements MyService {
     print(injectServiceProvider.get().toString());
     print((await dateProvider.get()).toString());
     print((await dateFuture).toString());
+    // TODO not supported in Dart2JS
+    print(provideInjectService().toString());
+    print((await provideDate()).toString());
     print("##################");
 
     var response = await super.echo(msg);
@@ -184,24 +187,28 @@ class MyServiceImpl extends BaseService with Printable implements MyService {
 
 @injectable
 abstract class BaseService extends Loggable {
-  @Inject(DateTime)
+  @inject
   Provider<Future<DateTime>> dateProvider;
 
-  @Inject(String)
+  // TODO not supported in Dart2JS
+  @inject
+  ProvideFunction<Future<DateTime>> provideDate;
+
+  @inject
   Provider<String> stringProvider;
 
   @inject
   InjectService injectService;
 
-  @Inject(InjectService)
+  @inject
   Provider<InjectService> injectServiceProvider;
 
-  @Inject(DateTime)
+  @inject
   Future<DateTime> dateFuture;
 
   // TODO not supported in Dart2JS
-  // @Inject(InjectService)
-  // ProvideFunction<InjectService> provideInjectService;
+  @inject
+  ProvideFunction<InjectService> provideInjectService;
 
   @onBind
   void postBind() => info("postBind");

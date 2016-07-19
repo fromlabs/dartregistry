@@ -26,7 +26,7 @@ class ExampleModule extends RegistryModule {
 
 @injectable
 class Service {
-  @Inject(Connection)
+  @inject
   Provider<Future<Connection>> connectionProvider;
 
   Future run() async {
@@ -52,10 +52,9 @@ class ConnectionImpl implements Connection {
 main() async {
   Logger.root.level = Level.INFO;
   Logger.root.onRecord.listen((record) {
-    print("*****");
     print(record);
-    print(record.error);
-    print(record.stackTrace);
+    // print(record.error);
+    // print(record.stackTrace);
   });
 
   try {

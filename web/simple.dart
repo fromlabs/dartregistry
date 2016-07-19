@@ -1,4 +1,5 @@
 import "package:dartregistry/dartregistry.dart";
+import "package:logging/logging.dart";
 
 @injectable
 class ExampleModule extends RegistryModule {
@@ -23,8 +24,7 @@ class Manager {
   @inject
   Worker worker;
 
-  // @inject
-  @Inject(Worker)
+  @inject
   Provider<Worker> workerProvider;
 
   void test() {
@@ -69,6 +69,14 @@ class WorkerProvider implements Provider<Worker> {
 }
 
 main() async {
+  Logger.root.level = Level.INFO;
+  Logger.root.onRecord.listen((record) {
+    print("*****");
+    print(record);
+    print(record.error);
+    print(record.stackTrace);
+  });
+
   // load the configuration
   Registry.load(new ExampleModule());
 

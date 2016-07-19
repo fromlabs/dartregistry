@@ -23,7 +23,7 @@ class GlobalService {
   @inject
   RequestService service;
 
-  @Inject(RequestService)
+  @inject
   Provider<RequestService> serviceProvider;
 
   test() {

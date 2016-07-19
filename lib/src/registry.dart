@@ -41,9 +41,8 @@ class Registry {
   final Map<Scope, Map<Type, Map<Type, BindingListeners>>> _scopeListeners =
       new Map.identity();
 
-  final Map<Type,
-          Map<Type, List<DeclarationMirror>>> _allAnnotatedDeclarations =
-      new Map.identity();
+  final Map<Type, Map<Type, List<DeclarationMirror>>>
+      _allAnnotatedDeclarations = new Map.identity();
 
   static void load(RegistryModule module) => _singleton._load(module);
   static void unload() => _singleton._unload();
@@ -421,6 +420,16 @@ class Registry {
         if (_isGenericTypeOf(variabileTypeMirror, _PROVIDER_TYPE_NAME)) {
           _logger.finest("Provider injection");
 
+          if (boundType == null) {
+            variabileTypeMirror = variabileTypeMirror.typeArguments.first;
+
+            if (_isGenericTypeOf(variabileTypeMirror, _FUTURE_TYPE_NAME)) {
+              boundType = variabileTypeMirror.typeArguments.first.reflectedType;
+            } else {
+              boundType = variabileTypeMirror.reflectedType;
+            }
+          }
+
           if (boundType != null) {
             _logger.finest("Injecting $boundType");
 
@@ -432,6 +441,10 @@ class Registry {
         } else if (_isGenericTypeOf(variabileTypeMirror, _FUTURE_TYPE_NAME)) {
           _logger.finest("Future injection");
 
+          if (boundType == null) {
+            boundType = variabileTypeMirror.typeArguments.first.reflectedType;
+          }
+
           if (boundType != null) {
             _logger.finest("Injecting $boundType");
 
@@ -442,6 +455,16 @@ class Registry {
         } else if (_isGenericTypeOf(
             variabileTypeMirror, _FUNCTION_PROVIDER_TYPE_NAME)) {
           _logger.finest("Provide function injection");
+
+          if (boundType == null) {
+            variabileTypeMirror = variabileTypeMirror.referent.returnType;
+
+            if (_isGenericTypeOf(variabileTypeMirror, _FUTURE_TYPE_NAME)) {
+              boundType = variabileTypeMirror.typeArguments.first.reflectedType;
+            } else {
+              boundType = variabileTypeMirror.reflectedType;
+            }
+          }
 
           if (boundType != null) {
             _logger.finest("Injecting $boundType");
