@@ -1,5 +1,5 @@
 name: dartregistry
-version: 1.3.0
+version: 1.3.1
 author: Roberto Tassi <roberto.tassi@fromlabs.org>
 description: A simple dependency injection library
 homepage: https://github.com/fromlabs/dartregistry
@@ -7,7 +7,7 @@ environment:
   sdk: ">=1.12.0 <2.0.0"
 dependencies:
   logging: ^0.11.0
-  reflectable: ^0.5.1
+  reflectable: ^1.0.0
 transformers:
 - reflectable:
     entry_points:
